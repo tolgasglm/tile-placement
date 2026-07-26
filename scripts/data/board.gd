@@ -37,3 +37,52 @@ func print_board() -> void:
 		for c in range(COLS):     # ...her sütunu tek tek kontrol et
 			line += "[X]" if grid[r][c] != null else "[ ]"  # Doluysa [X], boşsa [ ]
 		print(line)                # O satırı ekrana bas
+
+
+# İki kenarın birbiriyle uyumlu olup olmadığını kontrol eder
+func edges_compatible(edge_a: TileDef.Element, edge_b: TileDef.Element) -> bool:
+	# Void ya da Ether varsa, hangi elementle karşılaşırsa karşılaşsın uyumlu sayılır
+	if edge_a == TileDef.Element.VOID or edge_b == TileDef.Element.VOID:
+		return true
+	if edge_a == TileDef.Element.ETHER or edge_b == TileDef.Element.ETHER:
+		return true
+	# İkisi de "gerçek" bir element ise (Ateş/Su/Toprak/Hava), sadece birebir aynıysa uyumlu
+	return edge_a == edge_b
+
+# Verilen (row,col) için bir komşu koordinatını hesaplar
+func _neighbor_coord(row: int, col: int, dir: String) -> Array:
+	match dir:
+		"N": return [row - 1, col]
+		"S": return [row + 1, col]
+		"E": return [row, col + 1]
+		"W": return [row, col - 1]
+	return [row, col]
+
+# Verilen tile'ın (edges parametresiyle), belirtilen hücreye (row,col) yerleştirilip
+# yerleştirilemeyeceğini kontrol eder. edges: {"N":Element, "E":Element, "S":Element, "W":Element}
+func tile_fits(edges: Dictionary, row: int, col: int) -> bool:
+	var directions = ["N", "E", "S", "W"]
+	# Her yönün tersi — biz Kuzeye bakıyorsak, komşunun bize bakan kenarı onun Güneyi'dir
+	var opposite = {"N": "S", "S": "N", "E": "W", "W": "E"}
+
+	for dir in directions:
+		var neighbor_pos = _neighbor_coord(row, col, dir)
+		var nr = neighbor_pos[0]
+		var nc = neighbor_pos[1]
+
+		# Tahta sınırları dışındaysa, o yönde kontrol edilecek bir şey yok, devam
+		if nr < 0 or nr >= ROWS or nc < 0 or nc >= COLS:
+			continue
+
+		var neighbor_tile = grid[nr][nc]
+		# Komşu hücre boşsa, orada bir kenar kısıtı yok, devam
+		if neighbor_tile == null:
+			continue
+
+		var neighbor_facing_edge = neighbor_tile.get_edge(opposite[dir])
+		var my_edge = edges[dir]
+
+		if not edges_compatible(neighbor_facing_edge, my_edge):
+			return false  # Tek bir uyumsuzluk bile varsa, tile buraya sığmaz
+
+	return true  # Tüm yönler kontrolden geçtiyse, tile buraya sığar
