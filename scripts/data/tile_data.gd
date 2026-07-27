@@ -20,6 +20,14 @@ enum Creature { SALAMANDER, ROC, GOLEM, ABZU, DAGON }
 # Tile'ın satın alma fiyatı
 @export var price: int = 2
 
+# Bu tile'a yerleştirilmiş yaratık (henüz yerleştirilmediyse -1)
+var placed_creature: int = -1
+
+# Abzu'nun retroaktif ödeme hesabı için: bir Abzu bu tile'a konduğunda,
+# o anki dolu komşu sayısı burada saklanır. Yeni komşu tile eklendikçe bu değer güncellenir,
+# ve aradaki farkı sonradan ödeyebilmemizi sağlar.
+var abzu_last_count: int = 0
+
 # Verilen yön harfine ("N","E","S","W") karşılık gelen elementi döndürür
 func get_edge(direction: String) -> Element:
 	match direction:  # match: diğer dillerdeki switch/case ile aynı işi görür
