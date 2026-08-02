@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://sal4vxf6pego" path="res://scripts/draft_ui.gd" id="3_jyhfs"]
 [ext_resource type="Script" uid="uid://cbo3dpvom8j13" path="res://scripts/placement_ui.gd" id="4_tbgi4"]
 [ext_resource type="Script" uid="uid://4yf0rbs1xj1s" path="res://scripts/creature_ui.gd" id="5_tbgi4"]
+[ext_resource type="Script" uid="uid://uuf4l2i2bl0s" path="res://scripts/end_game_ui.gd" id="6_tefeu"]
 
 [node name="Node" type="Node" unique_id=1340915845]
 script = ExtResource("1_o5qli")
@@ -33,3 +34,10 @@ offset_top = 450.0
 offset_right = 640.0
 offset_bottom = 490.0
 script = ExtResource("5_tbgi4")
+
+[node name="EndGamePanel" type="PanelContainer" parent="." unique_id=1583752896]
+offset_left = 600.0
+offset_top = 550.0
+offset_right = 640.0
+offset_bottom = 590.0
+script = ExtResource("6_tefeu")

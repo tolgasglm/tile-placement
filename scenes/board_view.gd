@@ -16,6 +16,12 @@ var pending_rotation: int = 0
 var placing_creature: bool = false
 var pending_creature: int = -1
 
+var end_game_panel
+var game_over: bool = false
+
+const WIN_ROW = 0
+const WIN_COL = 2
+
 const CREATURE_NAMES = ["Salamander", "Roç", "Golem", "Abzu", "Dagon"]
 const CREATURE_SHORT = ["S", "R", "G", "A", "D"]
 
@@ -29,6 +35,7 @@ func _ready() -> void:
 	draft_panel = get_parent().get_node("DraftPanel")
 	placement_panel = get_parent().get_node("PlacementPanel")
 	creature_panel = get_parent().get_node("CreaturePanel")
+	end_game_panel = get_parent().get_node("EndGamePanel")
 
 	draft_panel.pair_selected.connect(_on_pair_selected)
 	draft_panel.refresh_selected.connect(_on_refresh_selected)
@@ -91,16 +98,24 @@ func _tile_label(cell: TileDef) -> String:
 	return base
 
 func _on_cell_pressed(row: int, col: int) -> void:
-	if placing_creature:
-		return   # Yaratık yerleştirme modundayken yeni tile başlatma
+	if placing_creature or game_over:   # game_over eklendi
+		return
 	pending_cell = [row, col]
 	var draft = generator.generate_draft()
+
+	if not economy.can_afford_anything(draft):   # YENİ: hiçbir seçeneği karşılayamıyorsa
+		_trigger_lose()
+		return
+
 	draft_panel.show_draft(draft, economy.money)
 
 func _on_pair_selected(pair: Dictionary) -> void:
 	if not economy.can_afford(pair["price"]):
 		return
 	economy.spend(pair["price"])
+	if economy.has_lost():        # YENİ
+		_trigger_lose()
+		return
 	pending_pair = pair
 	pending_rotation = 0
 	draft_panel.hide_panel()
@@ -111,6 +126,9 @@ func _on_refresh_selected() -> void:
 	if not economy.can_afford(1):
 		return
 	economy.spend(1)
+	if economy.has_lost():        # YENİ
+		_trigger_lose()
+		return
 	var draft = generator.generate_draft()
 	draft_panel.show_draft(draft, economy.money)
 
@@ -138,9 +156,15 @@ func _on_confirm_placement() -> void:
 	var rotated = _rotate_edges(pending_pair["edges"], pending_rotation)
 	if not board.tile_fits(rotated, pending_cell[0], pending_cell[1]):
 		return
-	board.place_tile(rotated, pending_cell[0], pending_cell[1], pending_pair["price"])
+	var placed_row = pending_cell[0]
+	var placed_col = pending_cell[1]
+	board.place_tile(rotated, placed_row, placed_col, pending_pair["price"])
 
-	# Tile yerleşti, şimdi yaratık yerleştirme moduna geç
+	if placed_row == WIN_ROW and placed_col == WIN_COL:   # YENİ: kazanma kontrolü
+		placement_panel.hide_panel()
+		_trigger_win()
+		return
+
 	pending_creature = pending_pair["creature"]
 	placing_creature = true
 	placement_panel.hide_panel()
@@ -167,3 +191,17 @@ func _on_creature_skip() -> void:
 	pending_creature = -1
 	creature_panel.hide_panel()
 	_render_board()
+	
+	
+func _trigger_win() -> void:
+	game_over = true
+	end_game_panel.show_win()
+	print("KAZANDIN!")
+
+func _trigger_lose() -> void:
+	game_over = true
+	draft_panel.hide_panel()
+	placement_panel.hide_panel()
+	creature_panel.hide_panel()
+	end_game_panel.show_lose()
+	print("OYUN BİTTİ — para tükendi")
