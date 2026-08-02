@@ -98,39 +98,59 @@ func _tile_label(cell: TileDef) -> String:
 	return base
 
 func _on_cell_pressed(row: int, col: int) -> void:
-	if placing_creature or game_over:   # game_over eklendi
+	if placing_creature or game_over:
 		return
 	pending_cell = [row, col]
 	var draft = generator.generate_draft()
 
-	if not economy.can_afford_anything(draft):   # YENİ: hiçbir seçeneği karşılayamıyorsa
+	if not economy.can_afford_anything(draft):
 		_trigger_lose()
 		return
 
-	draft_panel.show_draft(draft, economy.money)
+	var fits_list = []
+	for pair in draft:
+		fits_list.append(_any_rotation_fits(pair["edges"], row, col))
+
+	draft_panel.show_draft(draft, economy.money, fits_list)
 
 func _on_pair_selected(pair: Dictionary) -> void:
 	if not economy.can_afford(pair["price"]):
 		return
 	economy.spend(pair["price"])
-	if economy.has_lost():        # YENİ
+	if economy.has_lost():
 		_trigger_lose()
 		return
 	pending_pair = pair
-	pending_rotation = 0
 	draft_panel.hide_panel()
-	placement_panel.show_panel()
-	_update_placement_preview()
+
+	var row = pending_cell[0]
+	var col = pending_cell[1]
+	var fit_count = _count_fitting_rotations(pair["edges"], row, col)
+
+	if fit_count == 1:
+		# Tek açı uyuyor, onay beklemeden direkt yerleştir
+		var only_rotation = _find_first_fitting_rotation(pair["edges"], row, col)
+		_finalize_tile_placement(only_rotation)
+	else:
+		# Birden fazla açı uyuyor, oyuncu seçsin diye paneli göster
+		pending_rotation = _find_first_fitting_rotation(pair["edges"], row, col)
+		placement_panel.show_panel()
+		_update_placement_preview()
 
 func _on_refresh_selected() -> void:
 	if not economy.can_afford(1):
 		return
 	economy.spend(1)
-	if economy.has_lost():        # YENİ
+	if economy.has_lost():
 		_trigger_lose()
 		return
 	var draft = generator.generate_draft()
-	draft_panel.show_draft(draft, economy.money)
+
+	var fits_list = []
+	for pair in draft:
+		fits_list.append(_any_rotation_fits(pair["edges"], pending_cell[0], pending_cell[1]))
+
+	draft_panel.show_draft(draft, economy.money, fits_list)
 
 func _rotate_edges(edges: Dictionary, times: int) -> Dictionary:
 	var result = edges.duplicate()
@@ -139,7 +159,18 @@ func _rotate_edges(edges: Dictionary, times: int) -> Dictionary:
 	return result
 
 func _on_rotate_requested() -> void:
-	pending_rotation = (pending_rotation + 1) % 4
+	var edges = pending_pair["edges"]
+	var row = pending_cell[0]
+	var col = pending_cell[1]
+
+	# Mevcut açıdan başlayıp, en fazla 4 adım ileri giderek uyan bir SONRAKİ açıyı ara
+	for step in range(1, 5):
+		var candidate = (pending_rotation + step) % 4
+		var rotated = _rotate_edges(edges, candidate)
+		if board.tile_fits(rotated, row, col):
+			pending_rotation = candidate
+			break
+
 	_update_placement_preview()
 
 func _update_placement_preview() -> void:
@@ -156,23 +187,7 @@ func _on_confirm_placement() -> void:
 	var rotated = _rotate_edges(pending_pair["edges"], pending_rotation)
 	if not board.tile_fits(rotated, pending_cell[0], pending_cell[1]):
 		return
-	var placed_row = pending_cell[0]
-	var placed_col = pending_cell[1]
-	board.place_tile(rotated, placed_row, placed_col, pending_pair["price"])
-
-	if placed_row == WIN_ROW and placed_col == WIN_COL:   # YENİ: kazanma kontrolü
-		placement_panel.hide_panel()
-		_trigger_win()
-		return
-
-	pending_creature = pending_pair["creature"]
-	placing_creature = true
-	placement_panel.hide_panel()
-	creature_panel.show_prompt(CREATURE_NAMES[pending_creature])
-
-	pending_pair = {}
-	pending_cell = []
-	_render_board()
+	_finalize_tile_placement(pending_rotation)
 
 func _on_creature_target_pressed(row: int, col: int) -> void:
 	if not placing_creature:
@@ -205,3 +220,55 @@ func _trigger_lose() -> void:
 	creature_panel.hide_panel()
 	end_game_panel.show_lose()
 	print("OYUN BİTTİ — para tükendi")
+
+# Verilen kenarların, 4 döndürmeden EN AZ birinde pending_cell'e sığıp sığmadığını kontrol eder
+func _any_rotation_fits(edges: Dictionary, row: int, col: int) -> bool:
+	for rot in range(4):
+		var rotated = _rotate_edges(edges, rot)
+		if board.tile_fits(rotated, row, col):
+			return true
+	return false
+
+# 0'dan başlayarak ilk uyan döndürmeyi bulur. Draft ekranında zaten "en az biri uyuyor" garantisi
+# verdiğimiz için (fits_list kontrolü), bu fonksiyon her zaman bir sonuç bulmalı.
+func _find_first_fitting_rotation(edges: Dictionary, row: int, col: int) -> int:
+	for rot in range(4):
+		var rotated = _rotate_edges(edges, rot)
+		if board.tile_fits(rotated, row, col):
+			return rot
+	return 0   # Buraya normalde hiç düşmemeli (draft ekranı zaten garantiledi)
+
+
+# Verilen kenarların kaç farklı döndürmede sığdığını sayar (0, 1, 2, 3 ya da 4)
+func _count_fitting_rotations(edges: Dictionary, row: int, col: int) -> int:
+	var count = 0
+	for rot in range(4):
+		var rotated = _rotate_edges(edges, rot)
+		if board.tile_fits(rotated, row, col):
+			count += 1
+	return count
+
+
+
+# Tile'ı verilen açıyla tahtaya yerleştirir, kazanma kontrolü yapar,
+# kazanılmadıysa yaratık yerleştirme moduna geçer. Hem "tek açı var" otomatik
+# yerleştirmesi hem de elle "Onayla" butonu bu fonksiyonu çağırır.
+func _finalize_tile_placement(rotation: int) -> void:
+	var rotated = _rotate_edges(pending_pair["edges"], rotation)
+	var placed_row = pending_cell[0]
+	var placed_col = pending_cell[1]
+	board.place_tile(rotated, placed_row, placed_col, pending_pair["price"])
+
+	if placed_row == WIN_ROW and placed_col == WIN_COL:
+		placement_panel.hide_panel()
+		_trigger_win()
+		return
+
+	pending_creature = pending_pair["creature"]
+	placing_creature = true
+	placement_panel.hide_panel()
+	creature_panel.show_prompt(CREATURE_NAMES[pending_creature])
+
+	pending_pair = {}
+	pending_cell = []
+	_render_board()

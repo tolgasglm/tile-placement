@@ -39,15 +39,26 @@ func print_board() -> void:
 		print(line)                # O satırı ekrana bas
 
 
-# İki kenarın birbiriyle uyumlu olup olmadığını kontrol eder
-func edges_compatible(edge_a: TileDef.Element, edge_b: TileDef.Element) -> bool:
-	# Void ya da Ether varsa, hangi elementle karşılaşırsa karşılaşsın uyumlu sayılır
-	if edge_a == TileDef.Element.VOID or edge_b == TileDef.Element.VOID:
+# İki kenarın birbiriyle uyumlu olup olmadığını kontrol eder.
+# ÖNEMLİ: Bu fonksiyon artık YÖNLÜ (asimetrik) çalışıyor:
+# neighbor_edge = zaten tahtada duran komşu tile'ın kenarı
+# my_edge = yeni yerleştirmeye çalıştığımız tile'ın kenarı
+func edges_compatible(neighbor_edge: TileDef.Element, my_edge: TileDef.Element) -> bool:
+	# 1. Komşunun (zaten yerleşmiş tile'ın) kenarı Void ise, hiçbir kısıt getirmez
+	if neighbor_edge == TileDef.Element.VOID:
 		return true
-	if edge_a == TileDef.Element.ETHER or edge_b == TileDef.Element.ETHER:
+
+	# 2. Yeni tile'ımızın kenarı Void ise, komşu Void DEĞİLSE (yukarıda elenmediyse)
+	# bu her zaman reddedilir — Eter dahil, hiçbir dolu komşuya karşı Void koyulamaz
+	if my_edge == TileDef.Element.VOID:
+		return false
+
+	# 3. İkisi de Void değilse: Eter varsa uyumlu
+	if neighbor_edge == TileDef.Element.ETHER or my_edge == TileDef.Element.ETHER:
 		return true
-	# İkisi de "gerçek" bir element ise (Ateş/Su/Toprak/Hava), sadece birebir aynıysa uyumlu
-	return edge_a == edge_b
+
+	# 4. Buraya geldiysek ikisi de "gerçek" element (Ateş/Su/Toprak/Hava), birebir eşleşmeli
+	return neighbor_edge == my_edge
 
 # Verilen (row,col) için bir komşu koordinatını hesaplar
 func _neighbor_coord(row: int, col: int, dir: String) -> Array:
