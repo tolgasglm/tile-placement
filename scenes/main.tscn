@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://b0h1ipp5g841j" path="res://scenes/board_view.gd" id="2_0wfyh"]
 [ext_resource type="Script" uid="uid://sal4vxf6pego" path="res://scripts/draft_ui.gd" id="3_jyhfs"]
 [ext_resource type="Script" uid="uid://cbo3dpvom8j13" path="res://scripts/placement_ui.gd" id="4_tbgi4"]
+[ext_resource type="Script" uid="uid://4yf0rbs1xj1s" path="res://scripts/creature_ui.gd" id="5_tbgi4"]
 
 [node name="Node" type="Node" unique_id=1340915845]
 script = ExtResource("1_o5qli")
@@ -25,3 +26,10 @@ offset_top = 300.0
 offset_right = 640.0
 offset_bottom = 340.0
 script = ExtResource("4_tbgi4")
+
+[node name="CreaturePanel" type="PanelContainer" parent="." unique_id=1384837859]
+offset_left = 600.0
+offset_top = 450.0
+offset_right = 640.0
+offset_bottom = 490.0
+script = ExtResource("5_tbgi4")
