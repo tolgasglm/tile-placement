@@ -15,6 +15,7 @@ var pending_rotation: int = 0
 
 var placing_creature: bool = false
 var pending_creature: int = -1
+var is_pending_placement: bool = false
 
 var end_game_panel
 var game_over: bool = false
@@ -59,7 +60,11 @@ func _render_board() -> void:
 			var cell_node = TileCell.new()
 			var cell = board.grid[r][c]
 
-			if cell != null:
+			# YENİ: bu hücre şu an karar bekleyen (döndürülmekte olan) hücre mi?
+			if is_pending_placement and pending_cell.size() == 2 and pending_cell[0] == r and pending_cell[1] == c:
+				var rotated = _rotate_edges(pending_pair["edges"], pending_rotation)
+				cell_node.set_preview(rotated)
+			elif cell != null:
 				var selectable = placing_creature and cell.placed_creature == -1
 				cell_node.set_filled(
 					{"N": cell.edge_north, "E": cell.edge_east, "S": cell.edge_south, "W": cell.edge_west},
@@ -69,7 +74,7 @@ func _render_board() -> void:
 				if selectable:
 					cell_node.clicked.connect(_on_creature_target_pressed.bind(r, c))
 			else:
-				if placing_creature:
+				if placing_creature or is_pending_placement:   # DEĞİŞTİ: is_pending_placement eklendi
 					cell_node.set_empty_blocked()
 				else:
 					var key = str(r) + "," + str(c)
@@ -82,9 +87,8 @@ func _render_board() -> void:
 			add_child(cell_node)
 
 
-
 func _on_cell_pressed(row: int, col: int) -> void:
-	if placing_creature or game_over:
+	if placing_creature or game_over or is_pending_placement:
 		return
 	pending_cell = [row, col]
 	var draft = generator.generate_draft()
@@ -98,6 +102,7 @@ func _on_cell_pressed(row: int, col: int) -> void:
 		fits_list.append(_any_rotation_fits(pair["edges"], row, col))
 
 	draft_panel.show_draft(draft, economy.money, fits_list)
+
 
 func _on_pair_selected(pair: Dictionary) -> void:
 	if not economy.can_afford(pair["price"]):
@@ -114,14 +119,14 @@ func _on_pair_selected(pair: Dictionary) -> void:
 	var fit_count = _count_fitting_rotations(pair["edges"], row, col)
 
 	if fit_count == 1:
-		# Tek açı uyuyor, onay beklemeden direkt yerleştir
 		var only_rotation = _find_first_fitting_rotation(pair["edges"], row, col)
 		_finalize_tile_placement(only_rotation)
 	else:
-		# Birden fazla açı uyuyor, oyuncu seçsin diye paneli göster
 		pending_rotation = _find_first_fitting_rotation(pair["edges"], row, col)
+		is_pending_placement = true   # YENİ
 		placement_panel.show_panel()
 		_update_placement_preview()
+
 
 func _on_refresh_selected() -> void:
 	if not economy.can_afford(1):
@@ -168,6 +173,7 @@ func _update_placement_preview() -> void:
 		element_names[rotated["S"]], element_names[rotated["W"]]
 	]
 	placement_panel.update_display(text, fits)
+	_render_board()   # YENİ: tahtadaki altın çerçeveli önizlemeyi güncelle
 
 func _on_confirm_placement() -> void:
 	var rotated = _rotate_edges(pending_pair["edges"], pending_rotation)
@@ -240,6 +246,7 @@ func _count_fitting_rotations(edges: Dictionary, row: int, col: int) -> int:
 # kazanılmadıysa yaratık yerleştirme moduna geçer. Hem "tek açı var" otomatik
 # yerleştirmesi hem de elle "Onayla" butonu bu fonksiyonu çağırır.
 func _finalize_tile_placement(rotation: int) -> void:
+	is_pending_placement = false
 	var rotated = _rotate_edges(pending_pair["edges"], rotation)
 	var placed_row = pending_cell[0]
 	var placed_col = pending_cell[1]

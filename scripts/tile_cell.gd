@@ -7,6 +7,7 @@ var edges: Dictionary = {}
 var is_filled: bool = false
 var is_selectable: bool = false
 var creature: int = -1   # -1 = yaratık yok
+var is_preview: bool = false
 
 # Element renkleri (TileDef.Element enum sırasına göre: FIRE,WATER,EARTH,AIR,ETHER,VOID)
 const ELEMENT_COLORS = {
@@ -34,7 +35,7 @@ func _ready() -> void:
 # Godot bu fonksiyonu, hücre her "yeniden çizilmesi gerekiyor" işaretlendiğinde otomatik çağırır
 func _draw() -> void:
 	var size = get_rect().size
-	draw_rect(Rect2(Vector2.ZERO, size), Color("#17111F"))   # Zemin
+	draw_rect(Rect2(Vector2.ZERO, size), Color("#17111F"))
 
 	if is_filled:
 		_draw_edges(size)
@@ -43,8 +44,12 @@ func _draw() -> void:
 	elif is_selectable:
 		_draw_plus(size)
 
-	draw_rect(Rect2(Vector2.ZERO, size), Color("#3A2F45"), false, 1.0)   # İnce kenarlık
-
+	# DEĞİŞTİ: önizlemedeyse altın/kalın kenarlık, değilse normal ince gri kenarlık
+	var border_color = Color("#E7B23A") if is_preview else Color("#3A2F45")
+	var border_width = 2.5 if is_preview else 1.0
+	draw_rect(Rect2(Vector2.ZERO, size), border_color, false, border_width)
+	
+	
 func _draw_edges(size: Vector2) -> void:
 	var t = 10.0   # Şerit kalınlığı
 	draw_rect(Rect2(size.x*0.2, 0, size.x*0.6, t), ELEMENT_COLORS[edges["N"]])
@@ -83,4 +88,14 @@ func set_filled(tile_edges: Dictionary, tile_creature: int, selectable: bool) ->
 	edges = tile_edges
 	creature = tile_creature
 	is_selectable = selectable
+	queue_redraw()
+
+
+# Henüz onaylanmamış, "önizleme" halindeki bir tile'ı gösterir (altın kenarlıkla vurgulanır)
+func set_preview(tile_edges: Dictionary) -> void:
+	is_filled = true
+	edges = tile_edges
+	creature = -1
+	is_selectable = false
+	is_preview = true
 	queue_redraw()
