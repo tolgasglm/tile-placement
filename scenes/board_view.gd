@@ -56,46 +56,32 @@ func _render_board() -> void:
 
 	for r in range(Board.ROWS):
 		for c in range(Board.COLS):
-			var btn = Button.new()
-			btn.custom_minimum_size = Vector2(68, 68)
+			var cell_node = TileCell.new()
 			var cell = board.grid[r][c]
 
 			if cell != null:
-				if placing_creature and cell.placed_creature == -1:
-					# YARATIK YERLEŞTİRME MODU: bu tile hedef olabilir
-					btn.text = _tile_label(cell) + "\n[SEÇ]"
-					btn.disabled = false
-					btn.pressed.connect(_on_creature_target_pressed.bind(r, c))
-				else:
-					btn.text = _tile_label(cell)
-					btn.disabled = true
+				var selectable = placing_creature and cell.placed_creature == -1
+				cell_node.set_filled(
+					{"N": cell.edge_north, "E": cell.edge_east, "S": cell.edge_south, "W": cell.edge_west},
+					cell.placed_creature,
+					selectable
+				)
+				if selectable:
+					cell_node.clicked.connect(_on_creature_target_pressed.bind(r, c))
 			else:
 				if placing_creature:
-					# Yaratık yerleştirirken yeni tile başlatmayı engelle
-					btn.text = ""
-					btn.disabled = true
+					cell_node.set_empty_blocked()
 				else:
 					var key = str(r) + "," + str(c)
 					if expandable_set.has(key):
-						btn.text = "+"
-						btn.pressed.connect(_on_cell_pressed.bind(r, c))
+						cell_node.set_empty_selectable()
+						cell_node.clicked.connect(_on_cell_pressed.bind(r, c))
 					else:
-						btn.text = ""
-						btn.disabled = true
+						cell_node.set_empty_blocked()
 
-			add_child(btn)
+			add_child(cell_node)
 
-func _tile_label(cell: TileDef) -> String:
-	var short = {
-		TileDef.Element.FIRE: "F", TileDef.Element.WATER: "W", TileDef.Element.EARTH: "E",
-		TileDef.Element.AIR: "A", TileDef.Element.ETHER: "*", TileDef.Element.VOID: "-"
-	}
-	var base = "%s\n%s %s\n%s" % [
-		short[cell.edge_north], short[cell.edge_west], short[cell.edge_east], short[cell.edge_south]
-	]
-	if cell.placed_creature != -1:
-		base += "\n(%s)" % CREATURE_SHORT[cell.placed_creature]
-	return base
+
 
 func _on_cell_pressed(row: int, col: int) -> void:
 	if placing_creature or game_over:
