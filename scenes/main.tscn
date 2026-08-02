@@ -1,6 +1,27 @@
 [gd_scene format=3 uid="uid://uqgw6sfqt8u6"]
 
 [ext_resource type="Script" uid="uid://coe28p4jpplmc" path="res://scripts/main.gd" id="1_o5qli"]
+[ext_resource type="Script" uid="uid://b0h1ipp5g841j" path="res://scenes/board_view.gd" id="2_0wfyh"]
+[ext_resource type="Script" uid="uid://sal4vxf6pego" path="res://scripts/draft_ui.gd" id="3_jyhfs"]
+[ext_resource type="Script" uid="uid://cbo3dpvom8j13" path="res://scripts/placement_ui.gd" id="4_tbgi4"]
 
 [node name="Node" type="Node" unique_id=1340915845]
 script = ExtResource("1_o5qli")
+
+[node name="GridContainer" type="GridContainer" parent="." unique_id=312226679]
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("2_0wfyh")
+
+[node name="DraftPanel" type="PanelContainer" parent="." unique_id=1022272526]
+offset_left = 600.0
+offset_right = 640.0
+offset_bottom = 40.0
+script = ExtResource("3_jyhfs")
+
+[node name="PlacementPanel" type="PanelContainer" parent="." unique_id=1687695851]
+offset_left = 600.0
+offset_top = 300.0
+offset_right = 640.0
+offset_bottom = 340.0
+script = ExtResource("4_tbgi4")
