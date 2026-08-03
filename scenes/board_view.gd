@@ -16,6 +16,7 @@ var pending_rotation: int = 0
 var placing_creature: bool = false
 var pending_creature: int = -1
 var is_pending_placement: bool = false
+var is_drafting: bool = false   # "+" tıklandığı andan itibaren tile tahtaya oturana kadar true
 
 var end_game_panel
 var game_over: bool = false
@@ -63,7 +64,7 @@ func _render_board() -> void:
 			# YENİ: bu hücre şu an karar bekleyen (döndürülmekte olan) hücre mi?
 			if is_pending_placement and pending_cell.size() == 2 and pending_cell[0] == r and pending_cell[1] == c:
 				var rotated = _rotate_edges(pending_pair["edges"], pending_rotation)
-				cell_node.set_preview(rotated)
+				cell_node.set_preview(rotated)   # DEĞİŞTİ: creature parametresi kaldırıldı, eski haline döndü
 			elif cell != null:
 				var selectable = placing_creature and cell.placed_creature == -1
 				cell_node.set_filled(
@@ -74,7 +75,7 @@ func _render_board() -> void:
 				if selectable:
 					cell_node.clicked.connect(_on_creature_target_pressed.bind(r, c))
 			else:
-				if placing_creature or is_pending_placement:   # DEĞİŞTİ: is_pending_placement eklendi
+				if placing_creature or is_pending_placement or is_drafting:   # DEĞİŞTİ: is_pending_placement eklendi  # DEĞİŞTİ: is_drafting eklendi
 					cell_node.set_empty_blocked()
 				else:
 					var key = str(r) + "," + str(c)
@@ -88,9 +89,10 @@ func _render_board() -> void:
 
 
 func _on_cell_pressed(row: int, col: int) -> void:
-	if placing_creature or game_over or is_pending_placement:
+	if placing_creature or game_over or is_pending_placement or is_drafting:   # DEĞİŞTİ: is_drafting eklendi
 		return
 	pending_cell = [row, col]
+	is_drafting = true   # YENİ: artık geri dönüş yok, bu hücreye kilitlendik
 	var draft = generator.generate_draft()
 
 	if not economy.can_afford_anything(draft):
@@ -102,6 +104,7 @@ func _on_cell_pressed(row: int, col: int) -> void:
 		fits_list.append(_any_rotation_fits(pair["edges"], row, col))
 
 	draft_panel.show_draft(draft, economy.money, fits_list)
+	_render_board()   # YENİ: diğer "+" hücrelerini hemen kilitle
 
 
 func _on_pair_selected(pair: Dictionary) -> void:
@@ -167,13 +170,10 @@ func _on_rotate_requested() -> void:
 func _update_placement_preview() -> void:
 	var rotated = _rotate_edges(pending_pair["edges"], pending_rotation)
 	var fits = board.tile_fits(rotated, pending_cell[0], pending_cell[1])
-	var element_names = ["Ateş", "Su", "Toprak", "Hava", "Eter", "Boşluk"]
-	var text = "N:%s E:%s S:%s W:%s" % [
-		element_names[rotated["N"]], element_names[rotated["E"]],
-		element_names[rotated["S"]], element_names[rotated["W"]]
-	]
-	placement_panel.update_display(text, fits)
-	_render_board()   # YENİ: tahtadaki altın çerçeveli önizlemeyi güncelle
+	placement_panel.update_display(rotated, pending_pair["creature"], fits)   # DEĞİŞTİ
+	_render_board()
+
+
 
 func _on_confirm_placement() -> void:
 	var rotated = _rotate_edges(pending_pair["edges"], pending_rotation)
@@ -207,6 +207,7 @@ func _trigger_win() -> void:
 
 func _trigger_lose() -> void:
 	game_over = true
+	is_drafting = false   # YENİ
 	draft_panel.hide_panel()
 	placement_panel.hide_panel()
 	creature_panel.hide_panel()
@@ -247,6 +248,7 @@ func _count_fitting_rotations(edges: Dictionary, row: int, col: int) -> int:
 # yerleştirmesi hem de elle "Onayla" butonu bu fonksiyonu çağırır.
 func _finalize_tile_placement(rotation: int) -> void:
 	is_pending_placement = false
+	is_drafting = false   # YENİ: tile yerleşti, kilit artık gereksiz (placing_creature zaten devralıyor)
 	var rotated = _rotate_edges(pending_pair["edges"], rotation)
 	var placed_row = pending_cell[0]
 	var placed_col = pending_cell[1]

@@ -3,22 +3,31 @@ extends PanelContainer
 signal rotate_requested()
 signal confirm_requested()
 
-var info_label: Label
+var preview_cell: TileCell
 var confirm_btn: Button
 
-# Bu panel sabit elemanlara sahip (Label + 2 buton), bu yüzden onları _ready()'de bir kere kuruyoruz
 func _ready() -> void:
+	visible = false
 	var vbox = VBoxContainer.new()
 	add_child(vbox)
 
-	info_label = Label.new()
-	vbox.add_child(info_label)
+	var label = Label.new()
+	label.text = "Yerleştirmeyi Onayla"
+	label.add_theme_color_override("font_color", Color("#E7B23A"))
+	vbox.add_child(label)
+
+	# Büyükçe bir önizleme — tahtadaki altın çerçeveli hücrenin aynısı burada da gösteriliyor
+	preview_cell = TileCell.new()
+	preview_cell.cell_size = 72.0
+	preview_cell.size_flags_horizontal = Control.SIZE_SHRINK_CENTER   # YENİ: yatayda gerilme, ortala
+	preview_cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER     # YENİ: dikeyde de aynı
+	vbox.add_child(preview_cell)
 
 	var hbox = HBoxContainer.new()
 	vbox.add_child(hbox)
 
 	var rotate_btn = Button.new()
-	rotate_btn.text = "Döndür"
+	rotate_btn.text = "↻ Döndür"
 	rotate_btn.pressed.connect(func(): rotate_requested.emit())
 	hbox.add_child(rotate_btn)
 
@@ -27,12 +36,10 @@ func _ready() -> void:
 	confirm_btn.pressed.connect(func(): confirm_requested.emit())
 	hbox.add_child(confirm_btn)
 
-	visible = false
-
-# Güncel kenar bilgisini ve "sığıyor mu" durumunu ekrana yansıtır
-func update_display(edges_text: String, fits: bool) -> void:
-	info_label.text = edges_text + "\nSığıyor mu: " + ("EVET" if fits else "HAYIR")
-	confirm_btn.disabled = not fits   # Sığmıyorsa Onayla tıklanamaz
+# edges_text parametresi artık kullanılmıyor ama board_view.gd'yi bozmamak için imzada duruyor
+func update_display(edges: Dictionary, creature: int, fits: bool) -> void:
+	preview_cell.set_static(edges, -1, not fits)   # DEĞİŞTİ: creature yerine sabit -1 veriyoruz
+	confirm_btn.disabled = not fits
 
 func show_panel() -> void:
 	visible = true

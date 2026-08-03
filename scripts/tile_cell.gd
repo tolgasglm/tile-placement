@@ -8,6 +8,8 @@ var is_filled: bool = false
 var is_selectable: bool = false
 var creature: int = -1   # -1 = yaratık yok
 var is_preview: bool = false
+var is_invalid: bool = false   # Sığmayan bir kartı kırmızı çerçeveyle işaretlemek için
+var cell_size: float = 72.0    # YENİ: artık boyut dışarıdan ayarlanabilir (mini önizlemeler için)
 
 # Element renkleri (TileDef.Element enum sırasına göre: FIRE,WATER,EARTH,AIR,ETHER,VOID)
 const ELEMENT_COLORS = {
@@ -29,8 +31,8 @@ const CREATURE_COLORS = {
 }
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(72, 72)
-	mouse_filter = Control.MOUSE_FILTER_STOP   # Fare tıklamalarını yakalayabilsin
+	custom_minimum_size = Vector2(cell_size, cell_size)   # DEĞİŞTİ: sabit 72 yerine cell_size kullanıyor
+	mouse_filter = Control.MOUSE_FILTER_STOP
 
 # Godot bu fonksiyonu, hücre her "yeniden çizilmesi gerekiyor" işaretlendiğinde otomatik çağırır
 func _draw() -> void:
@@ -44,11 +46,15 @@ func _draw() -> void:
 	elif is_selectable:
 		_draw_plus(size)
 
-	# DEĞİŞTİ: önizlemedeyse altın/kalın kenarlık, değilse normal ince gri kenarlık
-	var border_color = Color("#E7B23A") if is_preview else Color("#3A2F45")
-	var border_width = 2.5 if is_preview else 1.0
+	var border_color = Color("#3A2F45")
+	var border_width = 1.0
+	if is_invalid:
+		border_color = Color("#D9695C")   # Kırmızı — sığmıyor
+		border_width = 2.5
+	elif is_preview:
+		border_color = Color("#E7B23A")   # Altın — önizleme
+		border_width = 2.5
 	draw_rect(Rect2(Vector2.ZERO, size), border_color, false, border_width)
-	
 	
 func _draw_edges(size: Vector2) -> void:
 	var t = 10.0   # Şerit kalınlığı
@@ -91,11 +97,21 @@ func set_filled(tile_edges: Dictionary, tile_creature: int, selectable: bool) ->
 	queue_redraw()
 
 
-# Henüz onaylanmamış, "önizleme" halindeki bir tile'ı gösterir (altın kenarlıkla vurgulanır)
-func set_preview(tile_edges: Dictionary) -> void:
+func set_preview(tile_edges: Dictionary, tile_creature: int = -1) -> void:   # YENİ parametre eklendi
 	is_filled = true
 	edges = tile_edges
-	creature = -1
+	creature = tile_creature   # DEĞİŞTİ: artık -1 sabit değil, dışarıdan geliyor
 	is_selectable = false
 	is_preview = true
+	queue_redraw()
+
+
+# Statik bir önizleme gösterir (draft panelindeki kartlar gibi) — tıklanamaz, sadece görsel
+func set_static(tile_edges: Dictionary, tile_creature: int, invalid: bool = false) -> void:
+	is_filled = true
+	edges = tile_edges
+	creature = tile_creature
+	is_selectable = false
+	is_preview = false
+	is_invalid = invalid
 	queue_redraw()
