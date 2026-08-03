@@ -64,7 +64,36 @@ func _draw_edges(size: Vector2) -> void:
 	draw_rect(Rect2(size.x-t, size.y*0.2, t, size.y*0.6), ELEMENT_COLORS[edges["E"]])
 
 func _draw_creature(size: Vector2) -> void:
-	draw_circle(size/2, size.x*0.22, CREATURE_COLORS[creature])
+	var center = size / 2
+	var r = size.x * 0.18
+	var color = CREATURE_COLORS[creature]
+
+	match creature:
+		0:  # Salamander — elmas
+			var pts = PackedVector2Array([
+				center + Vector2(0, -r), center + Vector2(r, 0),
+				center + Vector2(0, r), center + Vector2(-r, 0)
+			])
+			draw_colored_polygon(pts, color)
+		1:  # Roç — kanat/üçgen
+			var pts = PackedVector2Array([
+				center + Vector2(0, -r*1.15), center + Vector2(r*1.05, r*0.75),
+				center + Vector2(-r*1.05, r*0.75)
+			])
+			draw_colored_polygon(pts, color)
+		2:  # Golem — kare (sağlam/bloklu)
+			draw_rect(Rect2(center - Vector2(r, r) * 0.85, Vector2(r, r) * 1.7), color)
+		3:  # Abzu — halka (çevresini saran su)
+			draw_circle(center, r * 1.15, color)
+			draw_circle(center, r * 0.55, Color("#17111F"))
+		4:  # Dagon — 4 uçlu yıldız (çapraz ışınlar)
+			var pts = PackedVector2Array([
+				center + Vector2(0, -r*1.2), center + Vector2(r*0.35, -r*0.35),
+				center + Vector2(r*1.2, 0), center + Vector2(r*0.35, r*0.35),
+				center + Vector2(0, r*1.2), center + Vector2(-r*0.35, r*0.35),
+				center + Vector2(-r*1.2, 0), center + Vector2(-r*0.35, -r*0.35),
+			])
+			draw_colored_polygon(pts, color)
 
 func _draw_plus(size: Vector2) -> void:
 	var c = size/2

@@ -34,10 +34,10 @@ func _ready() -> void:
 	scorer = CreatureScorer.new()
 	economy = Economy.new()
 
-	draft_panel = get_parent().get_node("DraftPanel")
-	placement_panel = get_parent().get_node("PlacementPanel")
-	creature_panel = get_parent().get_node("CreaturePanel")
-	end_game_panel = get_parent().get_node("EndGamePanel")
+	draft_panel = get_node("%DraftPanel")
+	placement_panel = get_node("%PlacementPanel")
+	creature_panel = get_node("%CreaturePanel")
+	end_game_panel = get_node("%EndGamePanel")
 
 	draft_panel.pair_selected.connect(_on_pair_selected)
 	draft_panel.refresh_selected.connect(_on_refresh_selected)

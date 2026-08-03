@@ -6,38 +6,62 @@
 [ext_resource type="Script" uid="uid://cbo3dpvom8j13" path="res://scripts/placement_ui.gd" id="4_tbgi4"]
 [ext_resource type="Script" uid="uid://4yf0rbs1xj1s" path="res://scripts/creature_ui.gd" id="5_tbgi4"]
 [ext_resource type="Script" uid="uid://uuf4l2i2bl0s" path="res://scripts/end_game_ui.gd" id="6_tefeu"]
+[ext_resource type="Script" uid="uid://db0kcamirjfkn" path="res://scripts/legend_ui.gd" id="7_o6xl0"]
 
 [node name="Node" type="Node" unique_id=1340915845]
 script = ExtResource("1_o5qli")
 
-[node name="GridContainer" type="GridContainer" parent="." unique_id=312226679]
-offset_right = 40.0
-offset_bottom = 40.0
+[node name="Root" type="MarginContainer" parent="." unique_id=1877254352]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="Layout" type="HBoxContainer" parent="Root" unique_id=72121254]
+layout_mode = 2
+theme_override_constants/separation = 30
+alignment = 1
+
+[node name="LegendPanel" type="PanelContainer" parent="Root/Layout" unique_id=2037497799]
+layout_mode = 2
+size_flags_horizontal = 3
+script = ExtResource("7_o6xl0")
+
+[node name="GridContainer" type="GridContainer" parent="Root/Layout" unique_id=312226679]
+layout_mode = 2
 script = ExtResource("2_0wfyh")
 
-[node name="DraftPanel" type="PanelContainer" parent="." unique_id=1022272526]
-offset_left = 600.0
-offset_right = 640.0
-offset_bottom = 40.0
+[node name="SidePanels" type="VBoxContainer" parent="Root/Layout" unique_id=1968887877]
+custom_minimum_size = Vector2(340, 80)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 16
+
+[node name="DraftPanel" type="PanelContainer" parent="Root/Layout/SidePanels" unique_id=1022272526]
+unique_name_in_owner = true
+layout_mode = 2
 script = ExtResource("3_jyhfs")
 
-[node name="PlacementPanel" type="PanelContainer" parent="." unique_id=1687695851]
-offset_left = 600.0
-offset_top = 300.0
-offset_right = 640.0
-offset_bottom = 340.0
+[node name="Spacer" type="Control" parent="Root/Layout/SidePanels" unique_id=148484981]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+
+[node name="PlacementPanel" type="PanelContainer" parent="Root/Layout/SidePanels" unique_id=1687695851]
+unique_name_in_owner = true
+layout_mode = 2
 script = ExtResource("4_tbgi4")
 
-[node name="CreaturePanel" type="PanelContainer" parent="." unique_id=1384837859]
-offset_left = 600.0
-offset_top = 450.0
-offset_right = 640.0
-offset_bottom = 490.0
+[node name="CreaturePanel" type="PanelContainer" parent="Root/Layout/SidePanels" unique_id=1384837859]
+unique_name_in_owner = true
+layout_mode = 2
 script = ExtResource("5_tbgi4")
 
-[node name="EndGamePanel" type="PanelContainer" parent="." unique_id=1583752896]
-offset_left = 600.0
-offset_top = 550.0
-offset_right = 640.0
-offset_bottom = 590.0
+[node name="EndGamePanel" type="PanelContainer" parent="Root/Layout/SidePanels" unique_id=1583752896]
+unique_name_in_owner = true
+layout_mode = 2
 script = ExtResource("6_tefeu")
