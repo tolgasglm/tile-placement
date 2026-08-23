@@ -4,10 +4,12 @@ var board: Board
 var generator: TileGenerator
 var scorer: CreatureScorer
 var economy: Economy
+var board_cell_size: float = 72.0
 
 var draft_panel
 var placement_panel
 var creature_panel
+var money_log_panel
 
 var pending_cell: Array = []
 var pending_pair: Dictionary = {}
@@ -29,6 +31,12 @@ const CREATURE_SHORT = ["S", "R", "G", "A", "D"]
 
 func _ready() -> void:
 	columns = Board.COLS
+
+	# YENİ: pencere yüksekliğine göre hücre boyutunu hesapla
+	var viewport_size = get_viewport().get_visible_rect().size
+	var available_height = viewport_size.y - 48.0   # Root'taki 24px üst + 24px alt kenar boşluğu
+	board_cell_size = available_height / Board.ROWS
+
 	board = Board.new()
 	generator = TileGenerator.new()
 	scorer = CreatureScorer.new()
@@ -38,6 +46,7 @@ func _ready() -> void:
 	placement_panel = get_node("%PlacementPanel")
 	creature_panel = get_node("%CreaturePanel")
 	end_game_panel = get_node("%EndGamePanel")
+	money_log_panel = get_node("%MoneyLogPanel")
 
 	draft_panel.pair_selected.connect(_on_pair_selected)
 	draft_panel.refresh_selected.connect(_on_refresh_selected)
@@ -59,6 +68,8 @@ func _render_board() -> void:
 	for r in range(Board.ROWS):
 		for c in range(Board.COLS):
 			var cell_node = TileCell.new()
+			cell_node.cell_size = board_cell_size
+			cell_node.has_key = board.is_key_cell(r, c)
 			var cell = board.grid[r][c]
 
 			# YENİ: bu hücre şu an karar bekleyen (döndürülmekte olan) hücre mi?
@@ -111,6 +122,7 @@ func _on_pair_selected(pair: Dictionary) -> void:
 	if not economy.can_afford(pair["price"]):
 		return
 	economy.spend(pair["price"])
+	money_log_panel.log_spend("Tile · %s" % CREATURE_NAMES[pair["creature"]], pair["price"])
 	if economy.has_lost():
 		_trigger_lose()
 		return
@@ -132,13 +144,19 @@ func _on_pair_selected(pair: Dictionary) -> void:
 
 
 func _on_refresh_selected() -> void:
-	if not economy.can_afford(1):
+	if not economy.can_afford(Economy.REFRESH_COST):
 		return
-	economy.spend(1)
+	economy.spend(Economy.REFRESH_COST)
+	money_log_panel.log_spend("Yenile", Economy.REFRESH_COST)
 	if economy.has_lost():
 		_trigger_lose()
 		return
+
 	var draft = generator.generate_draft()
+
+	if not economy.can_afford_anything(draft):   # YENİ: yenileme sonrası da kontrol ediyoruz
+		_trigger_lose()
+		return
 
 	var fits_list = []
 	for pair in draft:
@@ -186,6 +204,7 @@ func _on_creature_target_pressed(row: int, col: int) -> void:
 		return
 	var payment = scorer.score_placement(board, row, col, pending_creature)
 	economy.gain(payment)
+	money_log_panel.log_gain(CREATURE_NAMES[pending_creature], payment)
 
 	placing_creature = false
 	pending_creature = -1
@@ -254,7 +273,9 @@ func _finalize_tile_placement(rotation: int) -> void:
 	var placed_col = pending_cell[1]
 	board.place_tile(rotated, placed_row, placed_col, pending_pair["price"])
 
-	if placed_row == WIN_ROW and placed_col == WIN_COL:
+	# Kazanma hücresi dolu VE iki anahtar da toplanmışsa kazan — sıra önemli değil:
+	# bu yerleştirme kazanma hücresini doldurmuş olabilir ya da son anahtarı toplamış olabilir.
+	if not board.is_empty(WIN_ROW, WIN_COL) and board.all_keys_collected():
 		placement_panel.hide_panel()
 		_trigger_win()
 		return

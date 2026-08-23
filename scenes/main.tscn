@@ -7,6 +7,8 @@
 [ext_resource type="Script" uid="uid://4yf0rbs1xj1s" path="res://scripts/creature_ui.gd" id="5_tbgi4"]
 [ext_resource type="Script" uid="uid://uuf4l2i2bl0s" path="res://scripts/end_game_ui.gd" id="6_tefeu"]
 [ext_resource type="Script" uid="uid://db0kcamirjfkn" path="res://scripts/legend_ui.gd" id="7_o6xl0"]
+[ext_resource type="Script" uid="uid://wnlq37f12msc" path="res://scripts/money_ui.gd" id="8_tipki"]
+[ext_resource type="Script" path="res://scripts/money_log_ui.gd" id="9_mlog1"]
 
 [node name="Node" type="Node" unique_id=1340915845]
 script = ExtResource("1_o5qli")
@@ -30,9 +32,11 @@ alignment = 1
 [node name="LegendPanel" type="PanelContainer" parent="Root/Layout" unique_id=2037497799]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 0
 script = ExtResource("7_o6xl0")
 
 [node name="GridContainer" type="GridContainer" parent="Root/Layout" unique_id=312226679]
+unique_name_in_owner = true
 layout_mode = 2
 script = ExtResource("2_0wfyh")
 
@@ -65,3 +69,12 @@ script = ExtResource("5_tbgi4")
 unique_name_in_owner = true
 layout_mode = 2
 script = ExtResource("6_tefeu")
+
+[node name="MoneyLabel" type="Label" parent="." unique_id=1773630643]
+offset_right = 40.0
+offset_bottom = 23.0
+script = ExtResource("8_tipki")
+
+[node name="MoneyLogPanel" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+script = ExtResource("9_mlog1")

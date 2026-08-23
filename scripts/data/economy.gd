@@ -29,10 +29,11 @@ func can_afford(amount: int) -> bool:
 
 # Verilen çekilişteki (3'lü draft) seçeneklerden HİÇBİRİNİ ve yenilemeyi bile
 # karşılayamıyorsa true döner — bu durumda oyun biter (dokümandaki kural)
+# NOT: "pair["price"] + MIX_EXTRA_COST" kontrolü kaldırıldı — price zaten karşılanamıyorsa
+# (daha ucuz eşik) price + MIX_EXTRA_COST (daha pahalı eşik) hiçbir zaman karşılanamaz,
+# yani o dal hiçbir zaman çalışmayan (ölü) kod idi.
 func can_afford_anything(draft: Array) -> bool:
 	for pair in draft:
 		if can_afford(pair["price"]):
-			return true
-		if can_afford(pair["price"] + MIX_EXTRA_COST):
 			return true
 	return can_afford(REFRESH_COST)

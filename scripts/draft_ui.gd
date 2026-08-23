@@ -7,6 +7,10 @@ var current_draft: Array = []
 var current_fits: Array = []
 
 func _ready() -> void:
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color("#1C1D33")   # Panelin arka planı — gece ormanının koyu lacivert-moru
+	style.set_corner_radius_all(8)
+	add_theme_stylebox_override("panel", style)
 	visible = false
 
 func show_draft(draft: Array, money: int, fits_list: Array) -> void:
@@ -27,7 +31,7 @@ func _rebuild(money: int) -> void:
 
 	var title = Label.new()
 	title.text = "Çekiliş — Paran: %d" % money
-	title.add_theme_color_override("font_color", Color("#E7B23A"))
+	title.add_theme_color_override("font_color", Color("#8FE8FF"))
 	vbox.add_child(title)
 
 	var row = HBoxContainer.new()
@@ -61,8 +65,8 @@ func _rebuild(money: int) -> void:
 		card.add_child(buy_btn)
 
 	var refresh_btn = Button.new()
-	refresh_btn.text = "Yenile (1 para)"
-	refresh_btn.disabled = money < 1
+	refresh_btn.text = "Yenile (%d para)" % Economy.REFRESH_COST
+	refresh_btn.disabled = money < Economy.REFRESH_COST
 	refresh_btn.pressed.connect(func(): refresh_selected.emit())
 	vbox.add_child(refresh_btn)
 

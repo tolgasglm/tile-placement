@@ -5,11 +5,16 @@ signal skip_requested()   # "Atla" butonuna basılınca board_view'e haber verir
 var label: Label
 
 func _ready() -> void:
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color("#1C1D33")   # Panelin arka planı — gece ormanının koyu lacivert-moru
+	style.set_corner_radius_all(8)
+	add_theme_stylebox_override("panel", style)
 	visible = false
 	var vbox = VBoxContainer.new()
 	add_child(vbox)
 
 	label = Label.new()
+	label.add_theme_color_override("font_color", Color("#D6A6FF"))   # Ruh parıltısı — eflatun
 	vbox.add_child(label)
 
 	var skip_btn = Button.new()

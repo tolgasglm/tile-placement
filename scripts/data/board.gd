@@ -6,6 +6,17 @@ const COLS = 5   # Tahtanın sütun sayısı (sabit, değişmez)
 
 var grid: Array = []  # Tahtanın kendisi: 2 boyutlu bir dizi (satır x sütun), henüz boş
 
+# Anahtarlar: üstten 3. ve 4. satırda (0-index'te 2 ve 3), her oyunda rastgele iki
+# hücreye konur. Aralarındaki mesafe yatay+dikey birlikte (Manhattan mesafesi)
+# tam KEY_GAP olacak şekilde seçilir. Bir hücreye tile yerleştirildiğinde, orada
+# henüz toplanmamış bir anahtar varsa otomatik toplanır (place_tile'a bakınız).
+const KEY_ROWS = [2, 3]
+const TOTAL_KEYS = 2
+const KEY_GAP = 4
+
+var key_positions: Array = []   # Henüz toplanmamış anahtarların [row, col] listesi
+var keys_collected: int = 0
+
 # Board.new() çağrıldığında Godot bu fonksiyonu otomatik çalıştırır (kurucu fonksiyon)
 func _init() -> void:
 	grid.resize(ROWS)          # Dış diziyi 8 satırlık yap
@@ -14,6 +25,38 @@ func _init() -> void:
 		row.resize(COLS)        # ...5 sütunluk boş bir satır oluştur
 		grid[r] = row            # ...ve dış diziye yerleştir
 	_place_start_tile()        # Izgara hazır olunca başlangıç tile'ını koy
+	_place_keys()               # Anahtarları rastgele yerleştir
+
+# Üstten 3. ve 4. satırdaki 10 hücre arasından, aralarındaki mesafesi (yatay+dikey
+# birlikte) tam KEY_GAP olan bir çift rastgele seçer.
+func _place_keys() -> void:
+	var candidates = []
+	for r in KEY_ROWS:
+		for c in range(COLS):
+			candidates.append([r, c])
+
+	var valid_pairs = []
+	for i in range(candidates.size()):
+		for j in range(i + 1, candidates.size()):
+			var a = candidates[i]
+			var b = candidates[j]
+			var dist = abs(a[0] - b[0]) + abs(a[1] - b[1])
+			if dist == KEY_GAP:
+				valid_pairs.append([a, b])
+
+	var chosen = valid_pairs[randi() % valid_pairs.size()]
+	key_positions = [chosen[0], chosen[1]]
+
+# Verilen hücrede henüz toplanmamış bir anahtar olup olmadığını kontrol eder
+func is_key_cell(row: int, col: int) -> bool:
+	for pos in key_positions:
+		if pos[0] == row and pos[1] == col:
+			return true
+	return false
+
+# İki anahtar da toplandı mı?
+func all_keys_collected() -> bool:
+	return keys_collected >= TOTAL_KEYS
 
 # Başlangıç tile'ını oluşturup tahtanın en alt-orta hücresine yerleştirir
 func _place_start_tile() -> void:
@@ -109,6 +152,10 @@ func place_tile(edges: Dictionary, row: int, col: int, price: int = 2) -> void:
 	new_tile.edge_west = edges["W"]
 	new_tile.price = price
 	grid[row][col] = new_tile              # Tahtadaki ilgili hücreye yerleştir
+
+	if is_key_cell(row, col):               # Bu hücrede toplanmamış bir anahtar varsa, otomatik topla
+		key_positions.erase([row, col])
+		keys_collected += 1
 
 # Bir hücrenin "erişilebilir" olup olmadığını kontrol eder:
 # en az bir komşusu dolu OLMALI, VE o komşulardan en az birinin bize bakan kenarı Void OLMAMALI

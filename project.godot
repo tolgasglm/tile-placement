@@ -29,3 +29,4 @@ window/stretch/aspect="expand"
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+environment/defaults/default_clear_color=Color(0.23921569, 0.41960785, 0.17254902, 1)
