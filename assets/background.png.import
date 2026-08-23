@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bv8amev24mcgm"
-path="res://.godot/imported/ether.png-7fc71e8647e5e8df80be5c8a373aa4c1.ctex"
+uid="uid://d1lviqdwjyrbq"
+path="res://.godot/imported/background.png-1fdba8b6a966ce2c2ffc607f7c096e95.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/elements/ether.png"
-dest_files=["res://.godot/imported/ether.png-7fc71e8647e5e8df80be5c8a373aa4c1.ctex"]
+source_file="res://assets/background.png"
+dest_files=["res://.godot/imported/background.png-1fdba8b6a966ce2c2ffc607f7c096e95.ctex"]
 
 [params]
 

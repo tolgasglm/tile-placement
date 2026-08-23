@@ -48,7 +48,8 @@ func _ready() -> void:
 # Godot bu fonksiyonu, hücre her "yeniden çizilmesi gerekiyor" işaretlendiğinde otomatik çağırır
 func _draw() -> void:
 	var size = get_rect().size
-	draw_rect(Rect2(Vector2.ZERO, size), Color("#14162B"))
+	# Boş hücreler yarı saydam: arkadaki orman fonu hafifçe görünsün
+	draw_rect(Rect2(Vector2.ZERO, size), Color("#14162B") if is_filled else Color(0.078431, 0.086275, 0.168627, 0.55))
 
 	if is_filled:
 		_draw_edges(size)
@@ -69,34 +70,109 @@ func _draw() -> void:
 		border_width = 2.5
 	draw_rect(Rect2(Vector2.ZERO, size), border_color, false, border_width)
 	
-# Tile karesini köşeden köşeye iki çaprazla 4 üçgene böler (pinwheel):
-# her üçgenin tabanı bir dış kenara, tepesi merkeze bakar. Her üçgen kendi
-# kenarının elementine ait dokuyla (VOID için düz renkle) doldurulur.
+# Tile karesini köşeden merkeze 4 kesimle 4 bölgeye ayırır (pinwheel).
+# Kesimler düz çapraz çizgi değil, dalgalı bir eğri. Çizim iki geçişte yapılır:
+#   1) Dört bölgenin opak tabanı — kesim çizgilerinde tam bitişik, boşluksuz.
+#   2) Her kesim için tek bir "geçiş bandı": kesimin üzerinde ortalanmış, bir
+#      tarafta alfa 1, diğer tarafta 0 olan bir şerit. Taban zaten opak olduğu
+#      için bant daima komşu dokunun üstüne karışır (arka plana değil), böylece
+#      keskin sınır yumuşar ama yarı saydam taşma/çıkıntı oluşmaz.
+# Her köşenin dalga eğrisi, o köşeyi paylaşan iki bölge tarafından da (ters
+# yönde okunarak) aynen kullanılır; böylece aralarında boşluk oluşmaz.
+const EDGE_FEATHER := 0.22   # geçiş bandının toplam genişliği, hücre boyutuna oran olarak
+
 func _draw_edges(size: Vector2) -> void:
 	var tl = Vector2(0, 0)
 	var tr = Vector2(size.x, 0)
 	var br = Vector2(size.x, size.y)
 	var bl = Vector2(0, size.y)
 	var center = size / 2
+	var feather = size.x * EDGE_FEATHER
 
-	var uv_tl = Vector2(0, 0)
-	var uv_tr = Vector2(1, 0)
-	var uv_br = Vector2(1, 1)
-	var uv_bl = Vector2(0, 1)
-	var uv_center = Vector2(0.5, 0.5)
+	var path_tl = _wavy_corner_path(tl, center, 0.0)
+	var path_tr = _wavy_corner_path(tr, center, 1.7)
+	var path_br = _wavy_corner_path(br, center, 3.4)
+	var path_bl = _wavy_corner_path(bl, center, 5.1)
 
-	_draw_edge_triangle(tl, tr, center, uv_tl, uv_tr, uv_center, edges["N"])
-	_draw_edge_triangle(tr, br, center, uv_tr, uv_br, uv_center, edges["E"])
-	_draw_edge_triangle(br, bl, center, uv_br, uv_bl, uv_center, edges["S"])
-	_draw_edge_triangle(bl, tl, center, uv_bl, uv_tl, uv_center, edges["W"])
+	_draw_edge_region(size, tl, tr, path_tr, path_tl, edges["N"])
+	_draw_edge_region(size, tr, br, path_br, path_tr, edges["E"])
+	_draw_edge_region(size, br, bl, path_bl, path_br, edges["S"])
+	_draw_edge_region(size, bl, tl, path_tl, path_bl, edges["W"])
 
-func _draw_edge_triangle(p1: Vector2, p2: Vector2, p3: Vector2, uv1: Vector2, uv2: Vector2, uv3: Vector2, element: int) -> void:
-	var points = PackedVector2Array([p1, p2, p3])
+	# Her kesim tam bir kez yumuşatılır: bandı çizen bölgenin dokusu, kesimin
+	# öbür yanındaki komşunun üstüne doğru sönümlenir.
+	_draw_seam_band(size, path_tl, (tl + tr + center) / 3.0, edges["N"], feather)
+	_draw_seam_band(size, path_tr, (tr + br + center) / 3.0, edges["E"], feather)
+	_draw_seam_band(size, path_br, (br + bl + center) / 3.0, edges["S"], feather)
+	_draw_seam_band(size, path_bl, (bl + tl + center) / 3.0, edges["W"], feather)
+
+# corner -> center arasında, iki uçta genliği sıfıra inen (böylece köşede ve
+# merkezde diğer kesimlerle tam örtüşen) dalgalı bir çizgi üretir.
+func _wavy_corner_path(corner: Vector2, center: Vector2, phase: float) -> PackedVector2Array:
+	var segments = 16
+	var dir = center - corner
+	var normal = Vector2(-dir.y, dir.x).normalized()
+	var amplitude = dir.length() * 0.08
+	var pts = PackedVector2Array()
+	for i in range(segments + 1):
+		var t = float(i) / segments
+		var envelope = sin(t * PI)   # uçlarda 0, ortada tepe
+		var wave = sin(t * TAU * 1.5 + phase) * envelope * amplitude
+		pts.append(corner.lerp(center, t) + normal * wave)
+	return pts
+
+# corner_a -> corner_b dış kenarı ile iki dalgalı kesimden kapalı bir bölge
+# oluşturup dokusuyla, tam opak olarak çizer.
+func _draw_edge_region(size: Vector2, corner_a: Vector2, corner_b: Vector2,
+		path_b: PackedVector2Array, path_a: PackedVector2Array, element: int) -> void:
+	var points = PackedVector2Array([corner_a, corner_b])
+	for i in range(1, path_b.size()):
+		points.append(path_b[i])
+	for i in range(path_a.size() - 2, 0, -1):
+		points.append(path_a[i])
+
+	var colors = PackedColorArray()
+	colors.resize(points.size())
+	colors.fill(Color.WHITE)
+	_draw_textured(points, colors, size, element)
+
+# Kesimin üzerinde ortalanmış bir şerit çizer: bandı çizen bölgenin kendi
+# tarafında alfa 1, komşunun tarafında 0. Kendi tarafında doku zaten aynı
+# olduğu için görsel etki yalnızca komşu tarafta bir karışım olarak görünür.
+func _draw_seam_band(size: Vector2, path: PackedVector2Array, centroid: Vector2,
+		element: int, feather: float) -> void:
+	var half = feather * 0.5
+	var inner = PackedVector2Array()   # bölgenin kendi tarafı (opak)
+	var outer = PackedVector2Array()   # komşunun tarafı (saydam)
+	for i in range(path.size()):
+		var prev = path[max(i - 1, 0)]
+		var next = path[min(i + 1, path.size() - 1)]
+		var normal = (next - prev).orthogonal().normalized()
+		if normal.dot(centroid - path[i]) > 0.0:
+			normal = -normal   # normal artık bölgeden dışa, komşuya doğru bakıyor
+		# Hücre sınırı dışına taşmasın: şeridi kareye kırpıyoruz
+		inner.append((path[i] - normal * half).clamp(Vector2.ZERO, size))
+		outer.append((path[i] + normal * half).clamp(Vector2.ZERO, size))
+
+	var solid = Color.WHITE
+	var clear = Color(1, 1, 1, 0)
+	for i in range(path.size() - 1):
+		var quad = PackedVector2Array([inner[i], inner[i + 1], outer[i + 1], outer[i]])
+		_draw_textured(quad, PackedColorArray([solid, solid, clear, clear]), size, element)
+
+# UV'ler doğrudan hücre içindeki konumdan türetilir (uv = nokta / hücre boyutu),
+# böylece bölgenin dışına taşan geçiş bandında da doku sürekliliği korunur.
+func _draw_textured(points: PackedVector2Array, colors: PackedColorArray, size: Vector2, element: int) -> void:
 	if element == 5:   # VOID — doku yok, düz koyu renk
-		draw_colored_polygon(points, ELEMENT_COLORS[5])
-	else:
-		var uvs = PackedVector2Array([uv1, uv2, uv3])
-		draw_polygon(points, PackedColorArray([Color.WHITE]), uvs, ELEMENT_TEXTURES[element])
+		var void_colors = PackedColorArray()
+		for c in colors:
+			void_colors.append(Color(ELEMENT_COLORS[5], c.a))
+		draw_polygon(points, void_colors)
+		return
+	var uvs = PackedVector2Array()
+	for p in points:
+		uvs.append(p / size)
+	draw_polygon(points, colors, uvs, ELEMENT_TEXTURES[element])
 
 func _draw_creature(size: Vector2) -> void:
 	var center = size / 2

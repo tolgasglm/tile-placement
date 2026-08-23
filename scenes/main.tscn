@@ -9,9 +9,30 @@
 [ext_resource type="Script" uid="uid://db0kcamirjfkn" path="res://scripts/legend_ui.gd" id="7_o6xl0"]
 [ext_resource type="Script" uid="uid://wnlq37f12msc" path="res://scripts/money_ui.gd" id="8_tipki"]
 [ext_resource type="Script" path="res://scripts/money_log_ui.gd" id="9_mlog1"]
+[ext_resource type="Texture2D" path="res://assets/background.png" id="10_bgimg"]
 
 [node name="Node" type="Node" unique_id=1340915845]
 script = ExtResource("1_o5qli")
+
+[node name="Background" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("10_bgimg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="BackgroundDim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.078431, 0.086275, 0.168627, 0.55)
 
 [node name="Root" type="MarginContainer" parent="." unique_id=1877254352]
 anchors_preset = 15
