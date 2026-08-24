@@ -16,10 +16,7 @@ const GAIN_COLOR = Color("#8FE8FF")    # Işık — kazanç
 const SPEND_COLOR = Color("#FF5C7A")   # Çürüme — harcama
 
 func _ready() -> void:
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color("#1C1D33")
-	style.set_corner_radius_all(8)
-	add_theme_stylebox_override("panel", style)
+	add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_LOG, 28, 22))
 
 	custom_minimum_size = Vector2(260, 220)
 

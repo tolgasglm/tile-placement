@@ -20,7 +20,7 @@ const ELEMENT_COLORS = {
 	2: Color("#5B8069"),  # Toprak — yosun yeşili
 	3: Color("#D5DFFF"),  # Hava — soluk gökyüzü laciverti
 	4: Color("#FBE6B8"),  # Eter — sıcak fildişi parıltı
-	5: Color("#3A3242"),  # Boşluk — doku yok, düz koyu renk
+	5: Color(0, 0, 0, 0), # Boşluk — hiç çizilmez, arkadaki fon görünür
 }
 
 # Element dokuları — VOID (5) hariç her element için, kenar üçgenlerinde kullanılır
@@ -48,8 +48,11 @@ func _ready() -> void:
 # Godot bu fonksiyonu, hücre her "yeniden çizilmesi gerekiyor" işaretlendiğinde otomatik çağırır
 func _draw() -> void:
 	var size = get_rect().size
-	# Boş hücreler yarı saydam: arkadaki orman fonu hafifçe görünsün
-	draw_rect(Rect2(Vector2.ZERO, size), Color("#14162B") if is_filled else Color(0.078431, 0.086275, 0.168627, 0.55))
+	# Boş hücreler yarı saydam: arkadaki orman fonu hafifçe görünsün.
+	# Dolu hücrelere zemin çizilmiyor — element dokuları zaten üzerini kapatıyor,
+	# BOŞLUK (VOID) kenarları ise hiç çizilmediği için arka plan olduğu gibi görünüyor.
+	if not is_filled:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.078431, 0.086275, 0.168627, 0.55))
 
 	if is_filled:
 		_draw_edges(size)
@@ -101,10 +104,27 @@ func _draw_edges(size: Vector2) -> void:
 
 	# Her kesim tam bir kez yumuşatılır: bandı çizen bölgenin dokusu, kesimin
 	# öbür yanındaki komşunun üstüne doğru sönümlenir.
-	_draw_seam_band(size, path_tl, (tl + tr + center) / 3.0, edges["N"], feather)
-	_draw_seam_band(size, path_tr, (tr + br + center) / 3.0, edges["E"], feather)
-	_draw_seam_band(size, path_br, (br + bl + center) / 3.0, edges["S"], feather)
-	_draw_seam_band(size, path_bl, (bl + tl + center) / 3.0, edges["W"], feather)
+	var c_n = (tl + tr + center) / 3.0
+	var c_e = (tr + br + center) / 3.0
+	var c_s = (br + bl + center) / 3.0
+	var c_w = (bl + tl + center) / 3.0
+	_draw_seam(size, path_tl, edges["N"], c_n, edges["W"], c_w, feather)
+	_draw_seam(size, path_tr, edges["E"], c_e, edges["N"], c_n, feather)
+	_draw_seam(size, path_br, edges["S"], c_s, edges["E"], c_e, feather)
+	_draw_seam(size, path_bl, edges["W"], c_w, edges["S"], c_s, feather)
+
+# Bir kesimi hangi tarafın yumuşatacağına karar verir. BOŞLUK (VOID) bölgeleri
+# hiç çizilmediği için bant her zaman dokulu taraftan çizilir; böylece doku
+# boşluğa doğru sönümlenip arka plana karışır. İki taraf da boşluksa yapacak
+# bir şey yoktur.
+func _draw_seam(size: Vector2, path: PackedVector2Array, owner_element: int, owner_centroid: Vector2,
+		other_element: int, other_centroid: Vector2, feather: float) -> void:
+	if owner_element == 5 and other_element == 5:
+		return
+	if owner_element == 5:
+		_draw_seam_band(size, path, other_centroid, other_element, feather)
+	else:
+		_draw_seam_band(size, path, owner_centroid, owner_element, feather)
 
 # corner -> center arasında, iki uçta genliği sıfıra inen (böylece köşede ve
 # merkezde diğer kesimlerle tam örtüşen) dalgalı bir çizgi üretir.
@@ -163,11 +183,7 @@ func _draw_seam_band(size: Vector2, path: PackedVector2Array, centroid: Vector2,
 # UV'ler doğrudan hücre içindeki konumdan türetilir (uv = nokta / hücre boyutu),
 # böylece bölgenin dışına taşan geçiş bandında da doku sürekliliği korunur.
 func _draw_textured(points: PackedVector2Array, colors: PackedColorArray, size: Vector2, element: int) -> void:
-	if element == 5:   # VOID — doku yok, düz koyu renk
-		var void_colors = PackedColorArray()
-		for c in colors:
-			void_colors.append(Color(ELEMENT_COLORS[5], c.a))
-		draw_polygon(points, void_colors)
+	if element == 5:   # BOŞLUK — hiçbir şey çizilmez, arka plan görünür kalır
 		return
 	var uvs = PackedVector2Array()
 	for p in points:
@@ -213,27 +229,37 @@ func _draw_creature(size: Vector2) -> void:
 			])
 			draw_colored_polygon(pts, color)
 
+# Anahtar, hücrenin ortasına en-boy oranı korunarak sığdırılan bir görselle çizilir
 func _draw_key(size: Vector2) -> void:
-	var center = size / 2
-	var color = Color("#F5C453")   # Altın-amber — anahtar parıltısı
-	var r = size.x * 0.14
-	var thickness = size.x * 0.06
+	var tex = UiTheme.KEY_ICON
+	var target_h = size.y * 0.62
+	var target_w = target_h * tex.get_width() / float(tex.get_height())
+	var rect = Rect2(size / 2 - Vector2(target_w, target_h) / 2, Vector2(target_w, target_h))
+	draw_texture_rect(tex, rect, false)
 
-	var head = center + Vector2(0, -r * 0.9)
-	draw_circle(head, r, color)
-	draw_circle(head, r * 0.45, Color("#14162B"))
-
-	var shaft_top = center + Vector2(0, -r * 0.1)
-	var shaft_bottom = center + Vector2(0, r * 1.3)
-	draw_line(shaft_top, shaft_bottom, color, thickness)
-	draw_line(shaft_bottom, shaft_bottom + Vector2(r * 0.6, 0), color, thickness)
-	draw_line(shaft_bottom + Vector2(0, -r * 0.45), shaft_bottom + Vector2(r * 0.4, -r * 0.45), color, thickness)
-
+# Seçilebilir boş hücrenin "buraya koyabilirsin" işareti. Düz iki çizgi yerine,
+# ortadaki bir ruh parıltısından dört yöne uzanan sivri uçlu filizler — panel
+# süslemeleriyle ve yaratık glifleriyle aynı ışıltılı orman diliyle konuşsun diye.
 func _draw_plus(size: Vector2) -> void:
-	var c = size/2
-	var a = size.x*0.22
-	draw_line(c-Vector2(a,0), c+Vector2(a,0), Color("#8FE8FF"), 3.0)
-	draw_line(c-Vector2(0,a), c+Vector2(0,a), Color("#8FE8FF"), 3.0)
+	var c = size / 2
+	var glow = Color("#8FE8FF")
+	var arm = size.x * 0.23          # kolun merkezden uzanma boyu
+	var half = size.x * 0.048        # kolun yarı kalınlığı — uçları yuvarlatılmış çubuk
+	var bar = Color(glow.r, glow.g, glow.b, 0.85)
+
+	# Yumuşak hale — sert kenarlı bir simge yerine ışık sızıntısı hissi
+	draw_circle(c, size.x * 0.19, Color(glow.r, glow.g, glow.b, 0.05))
+
+	for i in range(4):
+		var dir = Vector2.UP.rotated(i * PI / 2)
+		var side = dir.orthogonal() * half
+		var tip = c + dir * arm
+		draw_colored_polygon(PackedVector2Array([
+			c + side, tip + side, tip - side, c - side,
+		]), bar)
+		draw_circle(tip, half, bar)   # ucu yuvarlat
+
+	draw_circle(c, size.x * 0.052, Color("#EAFBFF"))
 
 # Godot'un Control node'larında fare/tuş girdisi bu fonksiyondan geçer
 func _gui_input(event: InputEvent) -> void:

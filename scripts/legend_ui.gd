@@ -10,10 +10,7 @@ const CREATURE_DESCRIPTIONS = [
 ]
 
 func _ready() -> void:
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color("#1C1D33")   # Panelin arka planı — gece ormanının koyu lacivert-moru
-	style.set_corner_radius_all(8)
-	add_theme_stylebox_override("panel", style)
+	add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_LEGEND, 34, 24))
 	custom_minimum_size = Vector2(340, 0)
 	var vbox = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 10)

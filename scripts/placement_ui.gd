@@ -7,10 +7,7 @@ var preview_cell: TileCell
 var confirm_btn: Button
 
 func _ready() -> void:
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color("#1C1D33")   # Panelin arka planı — gece ormanının koyu lacivert-moru
-	style.set_corner_radius_all(8)
-	add_theme_stylebox_override("panel", style)
+	add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_DRAFT, 26, 20))
 	visible = false
 	var vbox = VBoxContainer.new()
 	add_child(vbox)
