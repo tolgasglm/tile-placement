@@ -9,8 +9,10 @@ var is_selectable: bool = false
 var creature: int = -1   # -1 = yaratık yok
 var is_preview: bool = false
 var is_invalid: bool = false   # Sığmayan bir kartı kırmızı çerçeveyle işaretlemek için
+var is_target: bool = false    # Çekiliş sürerken seçili olan boş hücre
 var cell_size: float = 72.0    # YENİ: artık boyut dışarıdan ayarlanabilir (mini önizlemeler için)
 var has_key: bool = false      # Bu hücrede henüz toplanmamış bir anahtar var mı
+var lock_stage: int = -1       # Kazanma hücresinin kilit aşaması (0-4); -1 = kilit çizilmez
 
 # Element renkleri (TileDef.Element enum sırasına göre: FIRE,WATER,EARTH,AIR,ETHER,VOID)
 # "Ori and the Blind Forest" paleti: soğuk orman camgöbeği + sıcak ruh parıltısı
@@ -32,20 +34,11 @@ const ELEMENT_TEXTURES = {
 	4: preload("res://assets/elements/ether.png"),
 }
 
-# Yaratık renkleri (SALAMANDER,ROC,GOLEM,ABZU,DAGON sırasına göre) — ruh parıltısı tonları
-const CREATURE_COLORS = {
-	0: Color("#FF9E6B"),
-	1: Color("#BFF3FF"),
-	2: Color("#A99C86"),
-	3: Color("#4FE0C7"),
-	4: Color("#D68FFF"),
-}
-
 func _ready() -> void:
 	custom_minimum_size = Vector2(cell_size, cell_size)   # DEĞİŞTİ: sabit 72 yerine cell_size kullanıyor
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
-# Godot bu fonksiyonu, hücre her "yeniden çizilmesi gerekiyor" işaretlendiğinde otomatik çağırır
+# Godot bu fonksiyonu, hücre her "yeniden çizilmesi gerENTRY_SOUL_SIZEekiyor" işaretlendiğinde otomatik çağırır
 func _draw() -> void:
 	var size = get_rect().size
 	# Boş hücreler yarı saydam: arkadaki orman fonu hafifçe görünsün.
@@ -58,9 +51,15 @@ func _draw() -> void:
 		_draw_edges(size)
 		if creature != -1:
 			_draw_creature(size)
+	elif lock_stage >= 0:
+		# Kilit "+"ın yerine geçer: kilitliyken hücre zaten seçilemez, açıldıktan
+		# sonraki kısa süre boyunca da açık kilit tek başına görünsün
+		_draw_lock(size)
 	elif has_key:
 		_draw_key(size)
 	elif is_selectable:
+		# Seçili hedef hücrede "+" çizilmez: seçim yapıldıktan sonra artık bir
+		# davet değil, yalnızca işaretli bir hedef. Onu çerçevesi belli ediyor.
 		_draw_plus(size)
 
 	var border_color = Color("#2E2A4A")
@@ -68,6 +67,11 @@ func _draw() -> void:
 	if is_invalid:
 		border_color = Color("#FF5C7A")   # Çürüme kızılı — sığmıyor
 		border_width = 2.5
+	elif is_target:
+		# Çekiliş paneli açıkken tile'ın nereye geleceği unutulmasın diye
+		# seçili hücre kalın eter sarısı çerçeveyle işaretlenir
+		border_color = Color("#FBE6B8")   # Eter — seçili hedef
+		border_width = 4.0
 	elif is_preview:
 		border_color = Color("#8FE8FF")   # Ruh parıltısı — önizleme
 		border_width = 2.5
@@ -191,75 +195,36 @@ func _draw_textured(points: PackedVector2Array, colors: PackedColorArray, size: 
 	draw_polygon(points, colors, uvs, ELEMENT_TEXTURES[element])
 
 func _draw_creature(size: Vector2) -> void:
-	var center = size / 2
-	var r = size.x * 0.18
-	var color = CREATURE_COLORS[creature]
-
-	match creature:
-		0:  # Salamander — elmas
-			var pts = PackedVector2Array([
-				center + Vector2(0, -r), center + Vector2(r, 0),
-				center + Vector2(0, r), center + Vector2(-r, 0)
-			])
-			draw_colored_polygon(pts, color)
-		1:  # Roç — artı (+) şekli
-			var w = r * 0.4
-			var l = r * 1.1
-			var pts = PackedVector2Array([
-				center + Vector2(-w, -l), center + Vector2(w, -l),
-				center + Vector2(w, -w), center + Vector2(l, -w),
-				center + Vector2(l, w), center + Vector2(w, w),
-				center + Vector2(w, l), center + Vector2(-w, l),
-				center + Vector2(-w, w), center + Vector2(-l, w),
-				center + Vector2(-l, -w), center + Vector2(-w, -w),
-			])
-			draw_colored_polygon(pts, color)
-		2:  # Golem — kare (sağlam/bloklu)
-			draw_rect(Rect2(center - Vector2(r, r) * 0.85, Vector2(r, r) * 1.7), color)
-		3:  # Abzu — halka (çevresini saran su)
-			draw_circle(center, r * 1.15, color)
-			draw_circle(center, r * 0.55, Color("#14162B"))
-		4:  # Dagon — 4 uçlu yıldız, köşegenlere bakan (X/çapraz) uçlar
-			var rot = deg_to_rad(45)
-			var pts = PackedVector2Array([
-				center + Vector2(0, -r*1.2).rotated(rot), center + Vector2(r*0.35, -r*0.35).rotated(rot),
-				center + Vector2(r*1.2, 0).rotated(rot), center + Vector2(r*0.35, r*0.35).rotated(rot),
-				center + Vector2(0, r*1.2).rotated(rot), center + Vector2(-r*0.35, r*0.35).rotated(rot),
-				center + Vector2(-r*1.2, 0).rotated(rot), center + Vector2(-r*0.35, -r*0.35).rotated(rot),
-			])
-			draw_colored_polygon(pts, color)
-
-# Anahtar, hücrenin ortasına en-boy oranı korunarak sığdırılan bir görselle çizilir
-func _draw_key(size: Vector2) -> void:
-	var tex = UiTheme.KEY_ICON
-	var target_h = size.y * 0.62
+	var tex = UiTheme.CREATURE_ICONS[creature]
+	var target_h = size.y * 0.85
 	var target_w = target_h * tex.get_width() / float(tex.get_height())
 	var rect = Rect2(size / 2 - Vector2(target_w, target_h) / 2, Vector2(target_w, target_h))
 	draw_texture_rect(tex, rect, false)
 
-# Seçilebilir boş hücrenin "buraya koyabilirsin" işareti. Düz iki çizgi yerine,
-# ortadaki bir ruh parıltısından dört yöne uzanan sivri uçlu filizler — panel
-# süslemeleriyle ve yaratık glifleriyle aynı ışıltılı orman diliyle konuşsun diye.
+# Anahtar, hücrenin ortasına en-boy oranı korunarak sığdırılan bir görselle çizilir
+func _draw_key(size: Vector2) -> void:
+	var tex = UiTheme.KEY_ICON
+	var target_h = size.y * 1.05
+	var target_w = target_h * tex.get_width() / float(tex.get_height())
+	var rect = Rect2(size / 2 - Vector2(target_w, target_h) / 2, Vector2(target_w, target_h))
+	draw_texture_rect(tex, rect, false)
+
+# Kazanma hücresindeki kilit, anahtar simgesiyle aynı yerleşimle çizilir
+func _draw_lock(size: Vector2) -> void:
+	var tex = UiTheme.LOCK_STAGES[clampi(lock_stage, 0, UiTheme.LOCK_STAGES.size() - 1)]
+	var target_h = size.y * 0.9
+	var target_w = target_h * tex.get_width() / float(tex.get_height())
+	var rect = Rect2(size / 2 - Vector2(target_w, target_h) / 2, Vector2(target_w, target_h))
+	draw_texture_rect(tex, rect, false)
+
+# Seçilebilir boş hücrenin "buraya koyabilirsin" işareti — anahtar simgesiyle
+# aynı desende, ortaya en-boy oranı korunarak sığdırılmış bir görselle çizilir.
 func _draw_plus(size: Vector2) -> void:
-	var c = size / 2
-	var glow = Color("#8FE8FF")
-	var arm = size.x * 0.23          # kolun merkezden uzanma boyu
-	var half = size.x * 0.048        # kolun yarı kalınlığı — uçları yuvarlatılmış çubuk
-	var bar = Color(glow.r, glow.g, glow.b, 0.85)
-
-	# Yumuşak hale — sert kenarlı bir simge yerine ışık sızıntısı hissi
-	draw_circle(c, size.x * 0.19, Color(glow.r, glow.g, glow.b, 0.05))
-
-	for i in range(4):
-		var dir = Vector2.UP.rotated(i * PI / 2)
-		var side = dir.orthogonal() * half
-		var tip = c + dir * arm
-		draw_colored_polygon(PackedVector2Array([
-			c + side, tip + side, tip - side, c - side,
-		]), bar)
-		draw_circle(tip, half, bar)   # ucu yuvarlat
-
-	draw_circle(c, size.x * 0.052, Color("#EAFBFF"))
+	var tex = UiTheme.PLUS_ICON
+	var target_h = size.y * 0.85
+	var target_w = target_h * tex.get_width() / float(tex.get_height())
+	var rect = Rect2(size / 2 - Vector2(target_w, target_h) / 2, Vector2(target_w, target_h))
+	draw_texture_rect(tex, rect, false)
 
 # Godot'un Control node'larında fare/tuş girdisi bu fonksiyondan geçer
 func _gui_input(event: InputEvent) -> void:
@@ -276,6 +241,13 @@ func set_empty_selectable() -> void:
 func set_empty_blocked() -> void:
 	is_filled = false
 	is_selectable = false
+	queue_redraw()
+
+# Oyuncunun "+" ile seçtiği, çekiliş sonucunu bekleyen hücre
+func set_empty_target() -> void:
+	is_filled = false
+	is_selectable = false
+	is_target = true
 	queue_redraw()
 
 func set_filled(tile_edges: Dictionary, tile_creature: int, selectable: bool) -> void:

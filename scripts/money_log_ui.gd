@@ -9,11 +9,12 @@ extends PanelContainer
 var entries_box: VBoxContainer
 var scroll: ScrollContainer
 var width_reference: Control   # DraftPanel değil, onun ebeveyni SidePanels — DraftPanel gizliyken
-                                # (visible=false) size sıfır/geçersiz kalabildiği için, her zaman
-                                # görünür olup aynı genişliği veren konteyneri referans alıyoruz
+								# (visible=false) size sıfır/geçersiz kalabildiği için, her zaman
+								# görünür olup aynı genişliği veren konteyneri referans alıyoruz
 
 const GAIN_COLOR = Color("#8FE8FF")    # Işık — kazanç
 const SPEND_COLOR = Color("#FF5C7A")   # Çürüme — harcama
+const ENTRY_SOUL_SIZE := 40.0          # satır yüksekliğini şişirmeyecek kadar küçük
 
 func _ready() -> void:
 	add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_LOG, 28, 22))
@@ -24,7 +25,7 @@ func _ready() -> void:
 	add_child(vbox)
 
 	var title = Label.new()
-	title.text = "Para Günlüğü"
+	title.text = "Ruh Günlüğü"
 	title.add_theme_color_override("font_color", Color("#D6A6FF"))
 	vbox.add_child(title)
 
@@ -52,17 +53,27 @@ func _process(_delta: float) -> void:
 func log_gain(creature_name: String, amount: int) -> void:
 	if amount == 0:
 		return
-	_add_entry("+%d  %s" % [amount, creature_name], GAIN_COLOR)
+	_add_entry(amount, "+ %s" % creature_name, GAIN_COLOR)
 
 # Bir harcamayı (tile alımı, yenileme vb.) günlüğe ekler
 func log_spend(reason: String, amount: int) -> void:
-	_add_entry("-%d  %s" % [amount, reason], SPEND_COLOR)
+	_add_entry(amount, "− %s" % reason, SPEND_COLOR)
 
-func _add_entry(text: String, color: Color) -> void:
+# Miktar ruh ikonunun içinde, işaret ve sebep yanında yazar; kazanç mı harcama mı
+# olduğunu hem işaret hem de metnin rengi söyler
+func _add_entry(amount: int, text: String, color: Color) -> void:
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	entries_box.add_child(row)
+
+	row.add_child(SoulAmount.create(amount, ENTRY_SOUL_SIZE))
+
 	var label = Label.new()
 	label.text = text
 	label.add_theme_color_override("font_color", color)
-	entries_box.add_child(label)
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(label)
+
 	_scroll_to_bottom()
 
 # call_deferred tek başına yeterli değildi: yeni etiketin boyutu ve

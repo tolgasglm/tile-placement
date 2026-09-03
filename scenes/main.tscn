@@ -8,13 +8,14 @@
 [ext_resource type="Script" uid="uid://uuf4l2i2bl0s" path="res://scripts/end_game_ui.gd" id="6_tefeu"]
 [ext_resource type="Script" uid="uid://db0kcamirjfkn" path="res://scripts/legend_ui.gd" id="7_o6xl0"]
 [ext_resource type="Script" uid="uid://wnlq37f12msc" path="res://scripts/money_ui.gd" id="8_tipki"]
-[ext_resource type="Script" path="res://scripts/money_log_ui.gd" id="9_mlog1"]
-[ext_resource type="Texture2D" path="res://assets/background.png" id="10_bgimg"]
+[ext_resource type="Script" uid="uid://c37acdubrcfg1" path="res://scripts/money_log_ui.gd" id="9_mlog1"]
+[ext_resource type="Texture2D" uid="uid://d1lviqdwjyrbq" path="res://assets/background.png" id="10_bgimg"]
+[ext_resource type="Script" uid="uid://c5ah37d2h1w0t" path="res://scripts/scoreboard_ui.gd" id="11_score1"]
 
 [node name="Node" type="Node" unique_id=1340915845]
 script = ExtResource("1_o5qli")
 
-[node name="Background" type="TextureRect" parent="."]
+[node name="Background" type="TextureRect" parent="." unique_id=168764181]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -25,7 +26,7 @@ texture = ExtResource("10_bgimg")
 expand_mode = 1
 stretch_mode = 6
 
-[node name="BackgroundDim" type="ColorRect" parent="."]
+[node name="BackgroundDim" type="ColorRect" parent="." unique_id=553694370]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -50,11 +51,24 @@ layout_mode = 2
 theme_override_constants/separation = 30
 alignment = 1
 
-[node name="LegendPanel" type="PanelContainer" parent="Root/Layout" unique_id=2037497799]
+[node name="LeftPanels" type="VBoxContainer" parent="Root/Layout" unique_id=2037497800]
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 16
+
+[node name="LegendPanel" type="PanelContainer" parent="Root/Layout/LeftPanels" unique_id=2037497799]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 0
 script = ExtResource("7_o6xl0")
+
+[node name="ScoreboardPanel" type="PanelContainer" parent="Root/Layout/LeftPanels" unique_id=2037497801]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 0
+script = ExtResource("11_score1")
 
 [node name="GridContainer" type="GridContainer" parent="Root/Layout" unique_id=312226679]
 unique_name_in_owner = true
@@ -62,19 +76,19 @@ layout_mode = 2
 script = ExtResource("2_0wfyh")
 
 [node name="SidePanels" type="VBoxContainer" parent="Root/Layout" unique_id=1968887877]
-custom_minimum_size = Vector2(340, 80)
+custom_minimum_size = Vector2(400, 80)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 16
+
+[node name="Spacer" type="Control" parent="Root/Layout/SidePanels" unique_id=148484981]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
 
 [node name="DraftPanel" type="PanelContainer" parent="Root/Layout/SidePanels" unique_id=1022272526]
 unique_name_in_owner = true
 layout_mode = 2
 script = ExtResource("3_jyhfs")
-
-[node name="Spacer" type="Control" parent="Root/Layout/SidePanels" unique_id=148484981]
-custom_minimum_size = Vector2(0, 80)
-layout_mode = 2
 
 [node name="PlacementPanel" type="PanelContainer" parent="Root/Layout/SidePanels" unique_id=1687695851]
 unique_name_in_owner = true
@@ -96,6 +110,9 @@ offset_right = 40.0
 offset_bottom = 23.0
 script = ExtResource("8_tipki")
 
-[node name="MoneyLogPanel" type="PanelContainer" parent="."]
+[node name="MoneyLogPanel" type="PanelContainer" parent="." unique_id=768875638]
 unique_name_in_owner = true
 script = ExtResource("9_mlog1")
+
+[node name="SfxPlayer" type="AudioStreamPlayer" parent="." unique_id=983421002]
+unique_name_in_owner = true

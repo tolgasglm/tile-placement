@@ -6,13 +6,21 @@ const COLS = 5   # Tahtanın sütun sayısı (sabit, değişmez)
 
 var grid: Array = []  # Tahtanın kendisi: 2 boyutlu bir dizi (satır x sütun), henüz boş
 
-# Anahtarlar: üstten 3. ve 4. satırda (0-index'te 2 ve 3), her oyunda rastgele iki
-# hücreye konur. Aralarındaki mesafe yatay+dikey birlikte (Manhattan mesafesi)
-# tam KEY_GAP olacak şekilde seçilir. Bir hücreye tile yerleştirildiğinde, orada
-# henüz toplanmamış bir anahtar varsa otomatik toplanır (place_tile'a bakınız).
-const KEY_ROWS = [2, 3]
-const TOTAL_KEYS = 2
+# Anahtarlar iki ayrı "kuşak"ta, her kuşakta ikişer tane olacak şekilde her
+# oyunda yeniden rastgele yerleştirilir. Kuşaklar oyuncunun saydığı sırayla
+# (en alt satır = 1. satır) alttaki 3.-4. ve üstteki 6.-7. satırlar; grid
+# index'i ters yönde arttığı için bunlar 0-index'te 5-4 ve 2-1 satırlarıdır.
+# Bir kuşaktaki iki anahtarın arası (yatay+dikey birlikte, Manhattan mesafesi)
+# tam KEY_GAP olur. Bir hücreye tile yerleştirildiğinde, orada henüz
+# toplanmamış bir anahtar varsa otomatik toplanır (place_tile'a bakınız).
+const KEY_ROW_BANDS = [[4, 5], [1, 2]]
 const KEY_GAP = 4
+const TOTAL_KEYS = 4
+
+# Kazanma hücresi (üst-orta). Kilit kuralı burada uygulandığı için koordinatlar
+# board_view.gd'de değil burada tanımlı; board_view onları buradan okur.
+const WIN_ROW = 0
+const WIN_COL = 2
 
 var key_positions: Array = []   # Henüz toplanmamış anahtarların [row, col] listesi
 var keys_collected: int = 0
@@ -25,27 +33,30 @@ func _init() -> void:
 		row.resize(COLS)        # ...5 sütunluk boş bir satır oluştur
 		grid[r] = row            # ...ve dış diziye yerleştir
 	_place_start_tile()        # Izgara hazır olunca başlangıç tile'ını koy
-	_place_keys()               # Anahtarları rastgele yerleştir
+	_place_keys()               # Her kuşakta ikişer anahtar, rastgele
 
-# Üstten 3. ve 4. satırdaki 10 hücre arasından, aralarındaki mesafesi (yatay+dikey
-# birlikte) tam KEY_GAP olan bir çift rastgele seçer.
+# Her kuşak için, o kuşağın iki satırındaki 10 hücre arasından aralarındaki
+# mesafesi (yatay+dikey birlikte) tam KEY_GAP olan bir çift rastgele seçer.
 func _place_keys() -> void:
-	var candidates = []
-	for r in KEY_ROWS:
-		for c in range(COLS):
-			candidates.append([r, c])
+	key_positions = []
+	for band in KEY_ROW_BANDS:
+		var candidates = []
+		for r in band:
+			for c in range(COLS):
+				candidates.append([r, c])
 
-	var valid_pairs = []
-	for i in range(candidates.size()):
-		for j in range(i + 1, candidates.size()):
-			var a = candidates[i]
-			var b = candidates[j]
-			var dist = abs(a[0] - b[0]) + abs(a[1] - b[1])
-			if dist == KEY_GAP:
-				valid_pairs.append([a, b])
+		var valid_pairs = []
+		for i in range(candidates.size()):
+			for j in range(i + 1, candidates.size()):
+				var a = candidates[i]
+				var b = candidates[j]
+				var dist = abs(a[0] - b[0]) + abs(a[1] - b[1])
+				if dist == KEY_GAP:
+					valid_pairs.append([a, b])
 
-	var chosen = valid_pairs[randi() % valid_pairs.size()]
-	key_positions = [chosen[0], chosen[1]]
+		var chosen = valid_pairs[randi() % valid_pairs.size()]
+		key_positions.append(chosen[0])
+		key_positions.append(chosen[1])
 
 # Verilen hücrede henüz toplanmamış bir anahtar olup olmadığını kontrol eder
 func is_key_cell(row: int, col: int) -> bool:
@@ -54,9 +65,16 @@ func is_key_cell(row: int, col: int) -> bool:
 			return true
 	return false
 
-# İki anahtar da toplandı mı?
+# Dört anahtar da toplandı mı?
 func all_keys_collected() -> bool:
 	return keys_collected >= TOTAL_KEYS
+
+# Kazanma hücresi kilitli mi? Kilitliyken hücre hiç erişilebilir sayılmaz:
+# "+" çıkmaz, tıklanamaz, get_expandable_cells() onu döndürmez. Bu yüzden
+# board_view'ın ayrıca "anahtarlar tamam mı" diye sorması gerekmez —
+# hücre dolabildiyse kilit zaten açılmış demektir.
+func is_win_cell_locked() -> bool:
+	return not all_keys_collected()
 
 # Başlangıç tile'ını oluşturup tahtanın en alt-orta hücresine yerleştirir
 func _place_start_tile() -> void:
@@ -153,13 +171,24 @@ func place_tile(edges: Dictionary, row: int, col: int, price: int = 2) -> void:
 	new_tile.price = price
 	grid[row][col] = new_tile              # Tahtadaki ilgili hücreye yerleştir
 
-	if is_key_cell(row, col):               # Bu hücrede toplanmamış bir anahtar varsa, otomatik topla
-		key_positions.erase([row, col])
-		keys_collected += 1
+# Verilen hücredeki anahtarı toplar. Anahtar, tile oraya YERLEŞTİĞİNDE değil,
+# oyuncu o hücreyi "+" ile SEÇTİĞİNDE toplanır (bkz. board_view._on_cell_pressed):
+# seçim geri alınamadığı için hücre o an zaten oyuncuya ait sayılır.
+# Toplanacak bir anahtar yoksa false döner.
+func collect_key(row: int, col: int) -> bool:
+	if not is_key_cell(row, col):
+		return false
+	key_positions.erase([row, col])
+	keys_collected += 1
+	return true
 
 # Bir hücrenin "erişilebilir" olup olmadığını kontrol eder:
 # en az bir komşusu dolu OLMALI, VE o komşulardan en az birinin bize bakan kenarı Void OLMAMALI
+# (Kazanma hücresi ayrıca dört anahtar toplanana kadar kilitlidir.)
 func _is_cell_accessible(row: int, col: int) -> bool:
+	if row == WIN_ROW and col == WIN_COL and is_win_cell_locked():
+		return false
+
 	var directions = ["N", "E", "S", "W"]
 	var opposite = {"N": "S", "S": "N", "E": "W", "W": "E"}
 

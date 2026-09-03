@@ -10,14 +10,14 @@ var money: int = START_MONEY   # Oyuncunun anlık parası, başlangıçta START_
 # Para harcar (tile satın alma, karıştırma, yenileme gibi durumlarda çağrılır)
 func spend(amount: int) -> void:
 	money -= amount
-	print("(-%d para) Kalan: %d" % [amount, money])
+	print("(-%d ruh) Kalan: %d" % [amount, money])
 
 # Para kazandırır (yaratık puanlamasından gelen ödemeler için)
 func gain(amount: int) -> void:
 	if amount <= 0:
 		return   # 0 ya da negatif kazanç varsa loglamaya bile gerek yok
 	money += amount
-	print("(+%d para) Kalan: %d" % [amount, money])
+	print("(+%d ruh) Kalan: %d" % [amount, money])
 
 # Oyuncu kaybetti mi? (para 0'ın altına düştüyse)
 func has_lost() -> bool:

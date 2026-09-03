@@ -1,12 +1,13 @@
+class_name LegendPanel   # menu_ui.gd yaratık açıklamalarını buradan okur, kopyalamaz
 extends PanelContainer
 
 const CREATURE_NAMES = ["Salamander", "Roç", "Golem", "Abzu", "Dagon"]
 const CREATURE_DESCRIPTIONS = [
-	"Aynı satırda, tahtanın orta eksenine göre karşısındaki bir Salamander ile eşleşince ödeme alır: ilk eşleşme 4 altın, sonraki her eşleşme 2 altın daha fazla öder.",
-	"Bitişik Roç'lar bir grup oluşturur. Bir Roç yerleştirildiğinde, grup en az 2 üyeliyse, o anki grup büyüklüğü kadar altın öder.",
-	"Tahtadaki en yakın diğer Golem'e olan mesafe (yatay + dikey adım sayısı) kadar altın öder. İlk yerleştirilen Golem, eşi gelene kadar ödeme yapmaz.",
-	"Yerleştirildiği anda, çevresindeki 8 komşu hücreden (köşegenler dahil) kaçı doluysa o kadar altın öder.",
-	"Yerleştirildiği anda, dört çapraz (köşegen) komşusunda kaç Dagon varsa, her biri için 2 altın öder.",
+	"Tahtanın orta eksenine göre simetrik bir Salamander ile eşleşince öder.",
+	"Bitişik Roç'lar bir sürü oluşturur; sürüdeki Roç kadar öder.",
+	"En yakın diğer Golem'e olan mesafeye göre öder; ilk Golem eşini bekler.",
+	"Çevresindeki dolu komşu sayısına göre öder; yeni komşu eklendikçe tekrar öder.",
+	"Çapraz komşularındaki her Dagon için öder.",
 ]
 
 func _ready() -> void:

@@ -60,10 +60,14 @@ func _nearest_same_creature_distance(board: Board, row: int, col: int, creature:
 	return min_dist
 
 func _filled_neighbor_count_8(board: Board, row: int, col: int) -> int:
+	# Derin Kaynak kalıntısı köşegen komşuların ağırlığını 2'ye çıkarır
+	# (normalde 1). Hem ilk Abzu ödemesi hem update_abzu_neighbors bunu kullanır.
+	var diag_weight = RelicManager.abzu_diagonal_weight()
 	var count = 0
 	for pos in _neighbor_coords_8(row, col, board):
 		if board.grid[pos[0]][pos[1]] != null:
-			count += 1
+			var is_diagonal = pos[0] != row and pos[1] != col
+			count += diag_weight if is_diagonal else 1
 	return count
 
 func _diagonal_creature_count(board: Board, row: int, col: int, creature: int) -> int:
@@ -98,6 +102,7 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 			used_salamander_pairs[pair_key] = true
 			salamander_pair_count += 1
 			payment = 4 + (salamander_pair_count - 1) * 2
+			payment += RelicManager.salamander_pair_bonus()   # Alev Mührü: her çifte +2
 			print("Salamander simetrik çift #%d tamamlandı, ödeme: %d" % [salamander_pair_count, payment])
 		else:
 			print("Salamander yerleşti, henüz simetrik eşi yok")
@@ -105,7 +110,8 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 	elif creature == TileDef.Creature.ROC:
 		var size = _group_size(board, row, col, creature)
 		if size >= 2:
-			payment = size
+			# Sürü Tüyü: ödeme bir basamak yukarıdan başlar (2'li grup 3 öder)
+			payment = size + RelicManager.roc_group_bonus()
 			print("Roç grubu büyüklük %d'e ulaştı, ödeme: %d" % [size, payment])
 		else:
 			print("Roç yerleşti, henüz tek başına")
@@ -130,7 +136,8 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 	elif creature == TileDef.Creature.DAGON:
 		var diag = _diagonal_creature_count(board, row, col, creature)
 		if diag > 0:
-			payment = diag * 2
+			# Gölge Bağı: çapraz başına 2 yerine 3
+			payment = diag * RelicManager.dagon_per_diagonal()
 			print("Dagon çaprazında %d Dagon var, ödeme: %d" % [diag, payment])
 		else:
 			print("Dagon yerleşti, çaprazında eş yok")

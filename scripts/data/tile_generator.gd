@@ -58,6 +58,7 @@ func compute_price(edges: Dictionary) -> int:
 	# bu da tile'ı Eter kadar "esnek/değerli" yapmıyor, hatta kısıtlayıcı. Bu kısım değişmedi.
 
 	var price = 3 + difficulty - void_discount   # Taban 2'den 3'e çıkarıldı
+	price += RelicManager.tile_price_delta()     # Cimri Muska: -1
 	return max(price, 1)
 
 # Rastgele bir yaratık seçer (faz 1'de kısıtlama yok, 5 yaratık da eşit ihtimalli)
@@ -72,9 +73,10 @@ func generate_draft_pair() -> Dictionary:
 	var creature = pick_random_creature()
 	return {"edges": edges, "price": price, "creature": creature}
 
-# 3'lü çekiliş üretir (her turda oyuncuya gösterilecek seçenekler)
+# Çekiliş üretir (her turda oyuncuya gösterilecek seçenekler). Seçenek sayısı
+# normalde 3, Zaman Kumu kalıntısıyla 4.
 func generate_draft() -> Array:
 	var pairs = []
-	for i in range(3):
+	for i in range(RelicManager.draft_size()):
 		pairs.append(generate_draft_pair())
 	return pairs
