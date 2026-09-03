@@ -24,13 +24,22 @@ func _weighted_pick(weights: Dictionary):
 			return key                # ...o elementi döndür
 	return weights.keys()[0]         # Buraya normalde hiç düşmemeli, güvenlik amaçlı
 
+# Element Sözleşmesi kalıntısı bir elementi kenar havuzundan tamamen çıkarır.
+func _edge_weights() -> Dictionary:
+	var w = EDGE_WEIGHTS.duplicate()
+	for element in EDGE_WEIGHTS.keys():
+		if RelicManager.element_forbidden(element):
+			w.erase(element)
+	return w
+
 # Rastgele 4 kenarlı bir set üretir: {"N":Element, "E":Element, "S":Element, "W":Element}
 func generate_edges() -> Dictionary:
+	var weights = _edge_weights()
 	return {
-		"N": _weighted_pick(EDGE_WEIGHTS),
-		"E": _weighted_pick(EDGE_WEIGHTS),
-		"S": _weighted_pick(EDGE_WEIGHTS),
-		"W": _weighted_pick(EDGE_WEIGHTS),
+		"N": _weighted_pick(weights),
+		"E": _weighted_pick(weights),
+		"S": _weighted_pick(weights),
+		"W": _weighted_pick(weights),
 	}
 
 func compute_price(edges: Dictionary) -> int:
@@ -58,25 +67,46 @@ func compute_price(edges: Dictionary) -> int:
 	# bu da tile'ı Eter kadar "esnek/değerli" yapmıyor, hatta kısıtlayıcı. Bu kısım değişmedi.
 
 	var price = 3 + difficulty - void_discount   # Taban 2'den 3'e çıkarıldı
-	price += RelicManager.tile_price_delta()     # Cimri Muska: -1
-	return max(price, 1)
+	# Fiyat kalıntıları (Sabit Yön) tek noktada uygulanır:
+	return RelicManager.adjust_tile_price(price)
 
-# Rastgele bir yaratık seçer (faz 1'de kısıtlama yok, 5 yaratık da eşit ihtimalli)
-func pick_random_creature() -> TileDef.Creature:
-	var creatures = TileDef.Creature.values()   # Enum'daki tüm değerleri bir liste olarak al
+# Rastgele bir yaratık seçer. Yaratık Sözleşmesi kalıntısı bir türü havuzdan çıkarır.
+func pick_random_creature() -> int:
+	var creatures = []
+	for c in TileDef.Creature.values():
+		if not RelicManager.creature_forbidden(c):
+			creatures.append(c)
+	if creatures.is_empty():
+		creatures = TileDef.Creature.values()   # güvenlik: hepsi yasaklandıysa
 	return creatures[randi() % creatures.size()]
 
 # Tek bir "tile + yaratık" çifti üretir
 func generate_draft_pair() -> Dictionary:
 	var edges = generate_edges()
+	# Fiyat, Eter Dokusu override'ından ÖNCE hesaplanır: kenar Eter'e dönse bile
+	# tile'ın fiyatı artmaz.
 	var price = compute_price(edges)
+	if RelicManager.edge_ether_relic():
+		var dirs = ["N", "E", "S", "W"]
+		edges[dirs[randi() % dirs.size()]] = TileDef.Element.ETHER
 	var creature = pick_random_creature()
 	return {"edges": edges, "price": price, "creature": creature}
 
 # Çekiliş üretir (her turda oyuncuya gösterilecek seçenekler). Seçenek sayısı
-# normalde 3, Zaman Kumu kalıntısıyla 4.
+# normalde 3, Zaman Kumu kalıntısıyla 4. Karanlık Tohum armed ise en az bir
+# seçenek Dagon olur (garantiyi board_view gerçek çekilişi gösterince temizler).
 func generate_draft() -> Array:
 	var pairs = []
 	for i in range(RelicManager.draft_size()):
 		pairs.append(generate_draft_pair())
+
+	if RelicManager.wants_dagon_guarantee() and not RelicManager.creature_forbidden(TileDef.Creature.DAGON):
+		var has_dagon = false
+		for p in pairs:
+			if p["creature"] == TileDef.Creature.DAGON:
+				has_dagon = true
+				break
+		if not has_dagon:
+			pairs[randi() % pairs.size()]["creature"] = TileDef.Creature.DAGON
+
 	return pairs

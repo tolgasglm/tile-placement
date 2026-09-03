@@ -75,6 +75,13 @@ var money_log_panel
 var pending_cell: Array = []
 var pending_pair: Dictionary = {}
 var pending_rotation: int = 0
+# Seçili hücreye özel, satın almada tile fiyatına eklenenler:
+var pending_surcharge: int = 0        # Boşluk Deldirme / Çapraz Adım ile erişilen hücre → +2
+var pending_cell_had_key: bool = false # Kadim Anahtar: anahtar toplanan hücrede tile bedava
+
+# Elle etkinleştirilen tek kullanımlık kalıntıların o anki durumu
+var mirror_armed: bool = false   # Ayna Tahta: sıradaki tile simetrik hücreye de kopyalanır
+var twin_armed: bool = false     # Çift Ruh: sıradaki yaratığın ikinci bir kopyası da yerleştirilir
 
 var placing_creature: bool = false
 var pending_creature: int = -1
@@ -143,6 +150,7 @@ func _ready() -> void:
 	placement_panel.rotate_requested.connect(_on_rotate_requested)
 	placement_panel.confirm_requested.connect(_on_confirm_placement)
 	creature_panel.skip_requested.connect(_on_creature_skip)
+	creature_panel.burn_requested.connect(_on_creature_burn)   # Ruh Pazarı
 
 	_render_board()
 
@@ -166,7 +174,7 @@ func _render_board() -> void:
 			# board.keys_collected'tan değil displayed_keys'ten okunur: kilit
 			# ancak anahtar uçuşu kilide varınca ilerlemeli.
 			if lock_visible and r == WIN_ROW and c == WIN_COL and board.is_empty(r, c):
-				cell_node.lock_stage = displayed_keys
+				cell_node.lock_stage = _lock_stage_index(displayed_keys)
 			var cell = board.grid[r][c]
 
 			# YENİ: bu hücre şu an karar bekleyen (döndürülmekte olan) hücre mi?
@@ -234,13 +242,19 @@ func _on_cell_pressed(row: int, col: int) -> void:
 	if placing_creature or game_over or is_pending_placement or is_drafting:
 		return
 	_play_sfx(SOUND_DRAW, VOLUME_DRAW)
+	RelicManager.begin_turn()   # tur kapsamlı kalıntı sayacını sıfırla (Tüccar Yüzüğü)
 	pending_cell = [row, col]
 	is_drafting = true   # artık geri dönüş yok, bu hücreye kilitlendik
+
+	# Çapraz Adım ile (yalnızca çaprazdan) erişilen hücrede tile +2 ruh. Boşluk
+	# Deldirme ile erişilen hücrelerde ek maliyet yok.
+	pending_surcharge = board.placement_surcharge(row, col)
 
 	# Anahtar hücre seçildiği anda toplanır (seçim geri alınamaz). Toplama
 	# _render_board'dan ÖNCE olmalı ki hücre anahtarsız çizilsin — yoksa duran
 	# anahtar ile uçan anahtar aynı anda görünür.
 	var collected_key = board.collect_key(row, col)
+	pending_cell_had_key = collected_key   # Kadim Anahtar bunu satın almada kullanır
 	_render_board()   # diğer "+" hücrelerini hemen kilitle
 
 	if collected_key:
@@ -250,7 +264,7 @@ func _on_cell_pressed(row: int, col: int) -> void:
 		# Çekiliş HEMEN açılmaz: anahtar uçuşu, kilit açılışı ve (varsa) relic
 		# seçimi bittikten sonra açılır. Zincir:
 		#   _play_key_flight -> _advance_lock -> _on_key_collected -> _show_draft_for_pending
-		# Relic çekilişi/fiyatları etkileyebildiği için (Zaman Kumu, Cimri Muska)
+		# Relic çekilişi/fiyatları etkileyebildiği için (Zaman Kumu, Eter Dokusu vb.)
 		# çekiliş kesinlikle relic seçiminden SONRA üretilmeli.
 		return
 
@@ -274,16 +288,33 @@ func _show_draft_for_pending() -> void:
 		return
 	var fits_list = []
 	for pair in draft:
-		fits_list.append(_any_rotation_fits(pair["edges"], row, col))
-	draft_panel.show_draft(draft, economy.money, fits_list)
+		fits_list.append(_tile_buyable(pair["edges"], row, col))
+	var free_tile = RelicManager.ancient_key() and pending_cell_had_key
+	draft_panel.show_draft(draft, economy.money, fits_list, pending_surcharge, free_tile)
+	RelicManager.clear_dagon_guarantee()   # gerçek çekiliş gösterildi, garanti tüketildi
+
+
+# Bir tile bu hücreye satın alınabilir mi? Sabit Yön varsa yalnızca açı 0
+# geçerlidir; yoksa dört açıdan biri uyması yeter.
+func _tile_buyable(edges: Dictionary, row: int, col: int) -> bool:
+	if RelicManager.rotation_locked():
+		return board.tile_fits(edges, row, col)
+	return _any_rotation_fits(edges, row, col)
 
 
 func _on_pair_selected(pair: Dictionary) -> void:
-	if not economy.can_afford(pair["price"]):
+	# Fiyat: taban + genişletme ek maliyeti (Boşluk Deldirme / Çapraz Adım).
+	# Kadim Anahtar: anahtar toplanan hücreye konan tile tamamen bedava.
+	var price = pair["price"] + pending_surcharge
+	if RelicManager.ancient_key() and pending_cell_had_key:
+		price = 0
+
+	if not economy.can_afford(price):
 		return
 	_play_sfx(SOUND_SPEND, VOLUME_SPEND)
-	economy.spend(pair["price"])
-	money_log_panel.log_spend("Tile · %s" % CREATURE_NAMES[pair["creature"]], pair["price"])
+	if price > 0:
+		economy.spend(price)
+		money_log_panel.log_spend("Tile · %s" % CREATURE_NAMES[pair["creature"]], price)
 	if economy.has_lost():
 		_trigger_lose()
 		return
@@ -295,39 +326,59 @@ func _on_pair_selected(pair: Dictionary) -> void:
 
 	var row = pending_cell[0]
 	var col = pending_cell[1]
-	var fit_count = _count_fitting_rotations(pair["edges"], row, col)
 
+	# Sabit Yön: döndürme yok. Sadece açı 0 ile yerleştirilir (uymuyorsa "Al"
+	# düğmesi zaten kapalıydı, bu dal güvenlik için).
+	if RelicManager.rotation_locked():
+		if board.tile_fits(pair["edges"], row, col):
+			_finalize_tile_placement(0)
+		else:
+			push_warning("Sabit Yön: tile açı 0'da uymuyor")
+		return
+
+	var fit_count = _count_fitting_rotations(pair["edges"], row, col)
 	if fit_count == 1:
 		var only_rotation = _find_first_fitting_rotation(pair["edges"], row, col)
 		_finalize_tile_placement(only_rotation)
 	else:
 		pending_rotation = _find_first_fitting_rotation(pair["edges"], row, col)
-		is_pending_placement = true   # YENİ
+		is_pending_placement = true
 		placement_panel.show_panel()
 		_update_placement_preview()
 
 
 func _on_refresh_selected() -> void:
-	if not economy.can_afford(Economy.REFRESH_COST):
+	# Tüccar Yüzüğü: tur başına bir yenileme ücretsiz.
+	var cost = Economy.REFRESH_COST
+	if RelicManager.free_refresh_available():
+		cost = 0
+		RelicManager.use_free_refresh()
+
+	if not economy.can_afford(cost):
 		return
 	_play_sfx(SOUND_REFRESH, VOLUME_REFRESH)
-	economy.spend(Economy.REFRESH_COST)
-	money_log_panel.log_spend("Yenile", Economy.REFRESH_COST)
+	if cost > 0:
+		economy.spend(cost)
+		money_log_panel.log_spend("Yenile", cost)
+	else:
+		money_log_panel.log_spend("Yenile (Tüccar Yüzüğü)", 0)
 	if economy.has_lost():
 		_trigger_lose()
 		return
 
 	var draft = generator.generate_draft()
 
-	if not economy.can_afford_anything(draft):   # YENİ: yenileme sonrası da kontrol ediyoruz
+	if not economy.can_afford_anything(draft):   # yenileme sonrası da kontrol ediyoruz
 		_trigger_lose()
 		return
 
 	var fits_list = []
 	for pair in draft:
-		fits_list.append(_any_rotation_fits(pair["edges"], pending_cell[0], pending_cell[1]))
+		fits_list.append(_tile_buyable(pair["edges"], pending_cell[0], pending_cell[1]))
 
-	draft_panel.show_draft(draft, economy.money, fits_list)
+	var free_tile = RelicManager.ancient_key() and pending_cell_had_key
+	draft_panel.show_draft(draft, economy.money, fits_list, pending_surcharge, free_tile)
+	RelicManager.clear_dagon_guarantee()
 
 # Her ses kendi tek kullanımlık oynatıcısında çalar: arka arkaya gelen sesler
 # (satın alma + yerleştirme gibi) birbirini kesmez. Oynatıcı bitince kendini
@@ -402,11 +453,13 @@ func _play_key_flight(from_row: int, from_col: int) -> void:
 	)
 
 
-# Kilit bir aşama ilerler. Dördüncü anahtarda açılır: açık hâli kısa süre
-# görünür, sonra tamamen kaybolur ve hücre normal bir "+" hücresi olur.
+# Kilit bir aşama ilerler. Gereken anahtar sayısına ulaşınca açılır: açık hâli
+# kısa süre görünür, sonra tamamen kaybolur ve hücre normal bir "+" hücresi olur.
+# Eşik Kestirme Mühür ile 4 yerine 3 olabilir (RelicManager.keys_needed()).
 func _advance_lock() -> void:
 	displayed_keys = mini(displayed_keys + 1, Board.TOTAL_KEYS)
-	if displayed_keys >= Board.TOTAL_KEYS:
+	var opened = displayed_keys >= RelicManager.keys_needed()
+	if opened:
 		_play_sfx_path(SOUND_LOCK_OPEN_PATH, VOLUME_LOCK_OPEN)
 	else:
 		_play_sfx_path(SOUND_LOCK_STEP_PATH, VOLUME_LOCK_STEP)
@@ -419,7 +472,7 @@ func _advance_lock() -> void:
 	# ve çekiliş ancak bu bittikten SONRA gelir — yoksa açılış animasyonu relic
 	# seçim ekranının arkasında kalır ve oyuncuya kilit "aniden yok oldu" gibi
 	# görünür.
-	if displayed_keys >= Board.TOTAL_KEYS:
+	if opened and lock_visible:
 		await get_tree().create_timer(LOCK_OPEN_LINGER).timeout
 		lock_visible = false
 		if not is_rotating:
@@ -428,10 +481,19 @@ func _advance_lock() -> void:
 	_on_key_collected(displayed_keys)
 
 
+# displayed_keys -> LOCK_STAGES index'i. Normalde birebir (0..4). Kestirme Mühür
+# ile 3 adımda 5 görsel gösterilir, biri atlanarak.
+func _lock_stage_index(keys: int) -> int:
+	if RelicManager.keys_needed() >= Board.TOTAL_KEYS:
+		return keys
+	var skip_map = [0, 2, 3, 4]   # keys 0..3 -> görsel index'leri (index 1 atlanır)
+	return skip_map[clampi(keys, 0, skip_map.size() - 1)]
+
+
 # Anahtar uçuşu, kilit açılışı ve linger'ı bittikten SONRA çağrılır. Önce relic
 # seçim ekranını açar; seçim yapılınca (_on_relic_chosen) çekiliş üretilir. Relic
 # yoksa/kapalıysa çekilişi doğrudan açar. Sıra kritik: relic çekilişi ve
-# fiyatları etkileyebiliyor (Zaman Kumu, Cimri Muska).
+# fiyatları etkileyebiliyor (Zaman Kumu, Eter Dokusu, Sabit Yön vb.).
 func _on_key_collected(key_index: int) -> void:
 	print("Anahtar %d / %d toplandı" % [key_index, Board.TOTAL_KEYS])
 	if not relics_enabled or relic_panel == null:
@@ -533,12 +595,14 @@ func _on_confirm_placement() -> void:
 func _on_creature_target_pressed(row: int, col: int) -> void:
 	if not placing_creature:
 		return
-	_play_sfx(CREATURE_SOUNDS[pending_creature], CREATURE_VOLUMES[pending_creature])
-	var payment = scorer.score_placement(board, row, col, pending_creature)
-	# Bereket Kadehi: her yaratık yerleştirmesi sabit +1 ruh getirir (ödeme 0 olsa bile)
-	payment += RelicManager.creature_flat_bonus()
+	var placed_type = pending_creature
+	_play_sfx(CREATURE_SOUNDS[placed_type], CREATURE_VOLUMES[placed_type])
+	var payment = scorer.score_placement(board, row, col, placed_type)
 	economy.gain(payment)
-	money_log_panel.log_gain(CREATURE_NAMES[pending_creature], payment)
+	money_log_panel.log_gain(CREATURE_NAMES[placed_type], payment)
+
+	if placed_type == TileDef.Creature.DAGON:
+		RelicManager.arm_dagon_guarantee()   # Karanlık Tohum: sıradaki çekilişte Dagon garantisi
 
 	placing_creature = false
 	pending_creature = -1
@@ -546,6 +610,61 @@ func _on_creature_target_pressed(row: int, col: int) -> void:
 	_render_board()
 	creature_placed.emit(row, col)
 
+	# Çift Ruh önceden etkinleştirildiyse: aynı türden ikinci bir kopyayı da yerleştir.
+	if twin_armed:
+		twin_armed = false
+		pending_creature = placed_type
+		placing_creature = true
+		creature_panel.show_prompt(placed_type)
+		_render_board()
+		return
+
+	_check_stuck_after_creature()
+
+# Ruh Pazarı (tek kullanımlık): yaratığı tahtaya koymak yerine yakıp 3 ruh alır.
+func _on_creature_burn() -> void:
+	if not placing_creature:
+		return
+	economy.gain(3)
+	money_log_panel.log_gain("Ruh Pazarı", 3)
+	RelicManager.mark_spent("ruh_pazari")
+	placing_creature = false
+	pending_creature = -1
+	creature_panel.hide_panel()
+	_render_board()
+	_check_stuck_after_creature()
+
+# Kılık Taşı seçim ekranından dönen tür ile yaratığı dönüştürür.
+func _on_creature_swapped(creature: int) -> void:
+	if not placing_creature:
+		return
+	pending_creature = creature
+	RelicManager.mark_spent("kilik_tasi")
+	creature_panel.show_prompt(creature)
+	_render_board()
+
+# Bir kalıntının sahip-olunan-liste düğmesinden etkinleştirilmesi (tek kullanımlıklar).
+func _on_relic_activated(relic_id: String) -> void:
+	if game_over:
+		return
+	match relic_id:
+		"ayna_tahta":
+			mirror_armed = true   # sıradaki yerleştirmede etki eder
+			RelicManager.mark_spent(relic_id)
+		"cift_ruh":
+			twin_armed = true   # sıradaki yaratık yerleştirmesinde etki eder
+			RelicManager.mark_spent(relic_id)
+		"eter_sardi":
+			if not is_drafting or not draft_panel.visible:
+				return
+			draft_panel.etherize_all()
+			RelicManager.mark_spent(relic_id)
+		"kilik_tasi":
+			if not placing_creature:
+				return
+			relic_panel.open_creature_swap()   # seçim -> _on_creature_swapped
+
+func _check_stuck_after_creature() -> void:
 	# Yaratık ödemesi parayı kurtarmadıysa, oyuncuyu boş yere yeni bir hücre
 	# açmaya zorlamadan burada bitir — sonraki hiçbir çekiliş/yenileme karşılanamaz
 	if not economy.can_afford_anything(generator.generate_draft()):
@@ -557,9 +676,7 @@ func _on_creature_skip() -> void:
 	pending_creature = -1
 	creature_panel.hide_panel()
 	_render_board()
-
-	if not economy.can_afford_anything(generator.generate_draft()):
-		_trigger_lose()
+	_check_stuck_after_creature()
 
 	
 func _trigger_win() -> void:
@@ -621,6 +738,12 @@ func _finalize_tile_placement(rotation: int) -> void:
 	board.place_tile(rotated, placed_row, placed_col, pending_pair["price"])
 	_play_sfx(SOUND_PLACE, VOLUME_PLACE)
 
+	pending_surcharge = 0
+	pending_cell_had_key = false
+
+	# Ayna Tahta: bu tile'ın dikey eksene göre simetrik hücreye bedava kopyası.
+	_apply_mirror_board(rotated, placed_row, placed_col)
+
 	var abzu_extra = scorer.update_abzu_neighbors(board, placed_row, placed_col)
 	if abzu_extra > 0:
 		economy.gain(abzu_extra)
@@ -645,3 +768,22 @@ func _finalize_tile_placement(rotation: int) -> void:
 	# En sonda yayınlanır: öğretici bu sinyali aldığında yaratık paneli çoktan
 	# açılmış ve tahta yeniden çizilmiş olur, hedefleri doğru bulur.
 	tile_placed.emit(placed_row, placed_col)
+
+
+# Ayna Tahta kalıntısı armed ise: yerleştirilen tile'ı dikey eksene göre simetrik
+# hücreye bedava kopyalar (kenarlar da yatay yansıtılır: E<->W). Merkez sütunda
+# ya da hedef doluysa kopya yapılmaz ama kalıntı yine harcanır. Yaratık kopyalanmaz.
+func _apply_mirror_board(edges: Dictionary, row: int, col: int) -> void:
+	if not mirror_armed:
+		return
+	mirror_armed = false
+	RelicManager.mark_spent("ayna_tahta")
+	var mcol = Board.COLS - 1 - col
+	if mcol == col or not board.is_empty(row, mcol):
+		return
+	var mirrored = {"N": edges["N"], "S": edges["S"], "E": edges["W"], "W": edges["E"]}
+	board.place_tile(mirrored, row, mcol, 0)
+	var extra = scorer.update_abzu_neighbors(board, row, mcol)
+	if extra > 0:
+		economy.gain(extra)
+		money_log_panel.log_gain(CREATURE_NAMES[TileDef.Creature.ABZU], extra)

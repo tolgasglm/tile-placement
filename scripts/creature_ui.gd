@@ -1,10 +1,12 @@
 extends PanelContainer
 
 signal skip_requested()   # "Atla" butonuna basılınca board_view'e haber verir
+signal burn_requested()   # "Yak" (Ruh Pazarı kalıntısı) — yaratığı 3 ruha çevir
 
 const ICON_HEIGHT := 120.0
 
 var icon: TextureRect
+var burn_btn: Button
 
 func _ready() -> void:
 	add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_DRAFT, 26, UiTheme.CONTENT_PAD))
@@ -39,8 +41,15 @@ func _ready() -> void:
 	skip_btn.pressed.connect(func(): skip_requested.emit())
 	vbox.add_child(skip_btn)
 
+	# Yalnızca Ruh Pazarı kalıntısı varken görünür (show_prompt'ta ayarlanır).
+	burn_btn = Button.new()
+	burn_btn.text = "Yak (+3 ruh)"
+	burn_btn.pressed.connect(func(): burn_requested.emit())
+	vbox.add_child(burn_btn)
+
 func show_prompt(creature: int) -> void:
 	icon.texture = UiTheme.CREATURE_ICONS[creature]
+	burn_btn.visible = RelicManager.soul_market()
 	visible = true
 
 func hide_panel() -> void:

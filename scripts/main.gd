@@ -32,6 +32,8 @@ func _ready() -> void:
 	var board_view = get_node("%GridContainer")   # untyped: board_view.gd'nin class_name'i yok
 	board_view.relic_panel = relic_panel
 	relic_panel.relic_chosen.connect(board_view._on_relic_chosen)
+	relic_panel.relic_activated.connect(board_view._on_relic_activated)
+	relic_panel.creature_swap_chosen.connect(board_view._on_creature_swapped)
 
 	tutorial = TutorialManager.new()
 	add_child(tutorial)

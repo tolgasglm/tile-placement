@@ -17,6 +17,10 @@ const TITLE_SOUL_SIZE := 38.0
 
 var current_draft: Array = []
 var current_fits: Array = []
+var current_money: int = 0     # etherize_all yeniden kurarken lazım
+# Seçili hücreye özel fiyat düzeltmeleri (board_view'den gelir):
+var price_delta: int = 0       # Boşluk Deldirme / Çapraz Adım → +2
+var free_tile: bool = false    # Kadim Anahtar → anahtar hücresindeki tile bedava
 
 # Öğretici bu düğmeleri ekranda vurgulayabilmek için tutar; _rebuild her
 # çağrıldığında yeniden doldurulur
@@ -33,14 +37,35 @@ func _card_size(count: int) -> float:
 	var usable = UiTheme.COLUMN_WIDTH - 2.0 * UiTheme.CONTENT_PAD - (count - 1) * CARD_SEPARATION
 	return usable / count
 
-func show_draft(draft: Array, money: int, fits_list: Array) -> void:
+func show_draft(draft: Array, money: int, fits_list: Array, p_price_delta: int = 0, p_free: bool = false) -> void:
 	current_draft = draft
 	current_fits = fits_list
+	current_money = money
+	price_delta = p_price_delta
+	free_tile = p_free
 	visible = true
 	_rebuild(money)
 
+# Bir kartın oyuncuya gösterilen (ve satın alınırken ödenecek) fiyatı.
+func _effective_price(pair: Dictionary) -> int:
+	if free_tile:
+		return 0
+	return maxi(pair["price"] + price_delta, 0)
+
 func hide_panel() -> void:
 	visible = false
+
+# Eter Şardı kalıntısı: görünen çekilişteki tüm kartların kenarlarını Eter'e
+# çevirir (fiyat ve yaratıklar değişmez). Tüm kenarlar Eter olduğu için hepsi
+# her yere sığar, fits listesi tamamen true olur.
+func etherize_all() -> void:
+	var ether = TileDef.Element.ETHER
+	for pair in current_draft:
+		pair["edges"] = {"N": ether, "E": ether, "S": ether, "W": ether}
+	current_fits = []
+	for _pair in current_draft:
+		current_fits.append(true)
+	_rebuild(current_money)
 
 func _rebuild(money: int) -> void:
 	for child in get_children():
@@ -83,13 +108,14 @@ func _rebuild(money: int) -> void:
 		preview.set_static(pair["edges"], pair["creature"], not fits)
 
 		# Fiyat, tile'ın hemen altında ruh ikonunun içinde yazar
-		var price = SoulAmount.create(pair["price"], card_size * PRICE_SOUL_RATIO)
+		var eff_price = _effective_price(pair)
+		var price = SoulAmount.create(eff_price, card_size * PRICE_SOUL_RATIO)
 		price.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		card.add_child(price)
 
 		var buy_btn = Button.new()
 		buy_btn.text = "Al"
-		buy_btn.disabled = (money < pair["price"]) or not fits
+		buy_btn.disabled = (money < eff_price) or not fits
 		buy_btn.pressed.connect(_on_buy_pressed.bind(i))
 		card.add_child(buy_btn)
 		buy_buttons.append(buy_btn)
@@ -100,12 +126,14 @@ func _rebuild(money: int) -> void:
 	refresh_row.add_theme_constant_override("separation", 6)
 	vbox.add_child(refresh_row)
 
+	# Tüccar Yüzüğü kalıntısı bu turda bir yenilemeyi ücretsiz yapar.
+	var refresh_cost = 0 if RelicManager.free_refresh_available() else Economy.REFRESH_COST
 	refresh_button = Button.new()
 	refresh_button.text = "Yenile"
-	refresh_button.disabled = money < Economy.REFRESH_COST
+	refresh_button.disabled = money < refresh_cost
 	refresh_button.pressed.connect(func(): refresh_selected.emit())
 	refresh_row.add_child(refresh_button)
-	refresh_row.add_child(SoulAmount.create(Economy.REFRESH_COST, TITLE_SOUL_SIZE))
+	refresh_row.add_child(SoulAmount.create(refresh_cost, TITLE_SOUL_SIZE))
 
 func _on_buy_pressed(index: int) -> void:
 	pair_selected.emit(current_draft[index])

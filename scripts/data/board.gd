@@ -65,9 +65,11 @@ func is_key_cell(row: int, col: int) -> bool:
 			return true
 	return false
 
-# Dört anahtar da toplandı mı?
+# Kazanma hücresini açmak için gereken anahtarlar toplandı mı? Eşik normalde
+# TOTAL_KEYS (4); Kestirme Mühür kalıntısıyla 3 (tahtada yine 4 anahtar durur,
+# 4. relic de alınır, sadece kilit erken açılır).
 func all_keys_collected() -> bool:
-	return keys_collected >= TOTAL_KEYS
+	return keys_collected >= RelicManager.keys_needed()
 
 # Kazanma hücresi kilitli mi? Kilitliyken hücre hiç erişilebilir sayılmaz:
 # "+" çıkmaz, tıklanamaz, get_expandable_cells() onu döndürmez. Bu yüzden
@@ -182,18 +184,29 @@ func collect_key(row: int, col: int) -> bool:
 	keys_collected += 1
 	return true
 
+# Bir hücreye nasıl erişilebildiği. placement_surcharge yalnızca ÇAPRAZ ADIM ile
+# erişilen hücreye +2 uygular; Boşluk Deldirme ücretsizdir.
+const ACCESS_NONE = 0
+const ACCESS_NORMAL = 1
+const ACCESS_VOID_EXPAND = 2       # Boşluk Deldirme — ek maliyet yok
+const ACCESS_DIAGONAL_EXPAND = 3   # Çapraz Adım — +2 ruh
+
 # Bir hücrenin "erişilebilir" olup olmadığını kontrol eder:
 # en az bir komşusu dolu OLMALI, VE o komşulardan en az birinin bize bakan kenarı Void OLMAMALI
 # (Kazanma hücresi ayrıca dört anahtar toplanana kadar kilitlidir.)
 func _is_cell_accessible(row: int, col: int) -> bool:
+	return _access_kind(row, col) != ACCESS_NONE
+
+func _access_kind(row: int, col: int) -> int:
 	if row == WIN_ROW and col == WIN_COL and is_win_cell_locked():
-		return false
+		return ACCESS_NONE
 
 	var directions = ["N", "E", "S", "W"]
 	var opposite = {"N": "S", "S": "N", "E": "W", "W": "E"}
 
 	var has_filled_neighbor = false   # En az bir dolu komşu var mı?
 	var has_non_void_access = false   # O komşulardan en az biri Void olmayan bir kenarla mı bakıyor?
+	var has_void_facing = false       # Void kenarıyla bakan dolu komşu (Boşluk Deldirme için)
 
 	for dir in directions:
 		var neighbor_pos = _neighbor_coord(row, col, dir)
@@ -211,8 +224,32 @@ func _is_cell_accessible(row: int, col: int) -> bool:
 		var facing_edge = neighbor_tile.get_edge(opposite[dir])  # Komşunun bize bakan kenarı
 		if facing_edge != TileDef.Element.VOID:
 			has_non_void_access = true
+		else:
+			has_void_facing = true
 
-	return has_filled_neighbor and has_non_void_access
+	if has_filled_neighbor and has_non_void_access:
+		return ACCESS_NORMAL
+
+	# --- Kalıntı genişletmeleri --- (void, çaprazdan önce: ücretsiz olan tercih edilir)
+	if RelicManager.void_expand() and has_void_facing:
+		return ACCESS_VOID_EXPAND       # Boşluk Deldirme: Void kenarının baktığı yön
+	if RelicManager.diagonal_expand() and _has_filled_diagonal(row, col):
+		return ACCESS_DIAGONAL_EXPAND   # Çapraz Adım: çapraz komşu
+
+	return ACCESS_NONE
+
+func _has_filled_diagonal(row: int, col: int) -> bool:
+	for off in [[-1, -1], [-1, 1], [1, -1], [1, 1]]:
+		var nr = row + off[0]
+		var nc = col + off[1]
+		if nr >= 0 and nr < ROWS and nc >= 0 and nc < COLS and grid[nr][nc] != null:
+			return true
+	return false
+
+# Bu hücreye yalnızca Çapraz Adım (çapraz komşu) ile erişilebiliyorsa +2, aksi
+# halde 0. Boşluk Deldirme ile erişilen hücrelerde ek maliyet yoktur.
+func placement_surcharge(row: int, col: int) -> int:
+	return RelicManager.extension_surcharge() if _access_kind(row, col) == ACCESS_DIAGONAL_EXPAND else 0
 
 # Tahtadaki tüm boş VE erişilebilir hücreleri bir liste olarak döndürür.
 # Her eleman [row, col] şeklinde bir Array.

@@ -2,7 +2,10 @@ class_name CreatureScorer
 extends RefCounted
 
 var salamander_pair_count: int = 0
-var used_salamander_pairs: Dictionary = {}
+# Bir çifte dahil olmuş Salamander hücreleri ("r,c" -> true). Her Salamander en
+# fazla bir çifte girer: İkiz Kor'da bir Salamander birçok aday eşe sahip olabilir,
+# bu yüzden çift-anahtarı değil hücre tüketimi izlenir.
+var paired_salamander_cells: Dictionary = {}
 
 func _neighbor_coord(row: int, col: int, dir: String) -> Array:
 	match dir:
@@ -82,6 +85,25 @@ func _diagonal_creature_count(board: Board, row: int, col: int, creature: int) -
 			count += 1
 	return count
 
+# (row,col)'daki Salamander için henüz bir çifte girmemiş bir simetrik eş arar.
+# Döndürür: [eş_satır, eş_sütun, eş_hücre_anahtarı] ya da boş dizi. İkiz Kor
+# kalıntısı ayna sütununun tüm satırlarını tarar; yoksa yalnızca aynı satırı.
+func _find_salamander_partner(board: Board, row: int, col: int, mirror_col: int) -> Array:
+	if paired_salamander_cells.has("%d,%d" % [row, col]):
+		return []   # bu Salamander zaten bir çifte dahil
+	var rows_to_check = [row]
+	if RelicManager.salamander_any_row():
+		rows_to_check = range(board.ROWS)
+	for r2 in rows_to_check:
+		var mc = board.grid[r2][mirror_col]
+		if mc == null or mc.placed_creature != TileDef.Creature.SALAMANDER:
+			continue
+		var partner_key = "%d,%d" % [r2, mirror_col]
+		if paired_salamander_cells.has(partner_key):
+			continue   # aday eş zaten başka bir çifte dahil
+		return [r2, mirror_col, partner_key]
+	return []
+
 func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 	var cell = board.grid[row][col]
 	if cell == null or cell.placed_creature != -1:
@@ -95,11 +117,13 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 		if col == 2:
 			print("Salamander eksen sütununa (orta) kondu, kendi kendine eş olamaz")
 			return 0
+		# İkiz Kor: aynı satır şartı kalkar, ayna sütununun HERHANGİ bir satırındaki
+		# Salamander ile eşleşir. Kalıntı yoksa yalnızca aynı satır (mirror_col).
 		var mirror_col = board.COLS - 1 - col
-		var mirror_cell = board.grid[row][mirror_col]
-		var pair_key = str(row) + "-" + str(min(col, mirror_col))
-		if mirror_cell != null and mirror_cell.placed_creature == TileDef.Creature.SALAMANDER and not used_salamander_pairs.has(pair_key):
-			used_salamander_pairs[pair_key] = true
+		var partner = _find_salamander_partner(board, row, col, mirror_col)
+		if partner.size() == 3:
+			paired_salamander_cells["%d,%d" % [row, col]] = true
+			paired_salamander_cells[partner[2]] = true
 			salamander_pair_count += 1
 			payment = 4 + (salamander_pair_count - 1) * 2
 			payment += RelicManager.salamander_pair_bonus()   # Alev Mührü: her çifte +2
