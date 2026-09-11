@@ -14,13 +14,14 @@ signal play_requested()
 signal tutorial_requested()
 
 const LAYER := 30
-const BACKGROUND := preload("res://assets/background.png")
 const DIM_COLOR := Color(0.078431, 0.086275, 0.168627, 0.65)
 
 # "Yeniden Başla" sahneyi baştan yükler; oyuncuyu her ölümde menüye geri
 # göndermemek için o yol menüyü atlar. Sahne değişimini atlaması gerektiğinden
 # static.
 static var skip_next := false
+
+var progress_panel: ProgressionPanel   # "İlerleme" ekranı, ilk açılışta kurulur
 
 
 static func consume_skip() -> bool:
@@ -38,7 +39,7 @@ func _ready() -> void:
 func _build_background() -> void:
 	var bg = TextureRect.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.texture = BACKGROUND
+	bg.texture = UiTheme.BACKGROUND
 	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	# STOP: altta duran oyun tahtasına hiçbir tık geçmesin
@@ -77,12 +78,22 @@ func _build_menu() -> void:
 	subtitle.add_theme_color_override("font_color", Color("#8FE8FF"))   # Ruh parıltısı
 	vbox.add_child(subtitle)
 
+	# Kalıcı ilerlemenin başlangıç ruhuna kattığı bonus burada görünür: oyuncu
+	# oyuna girmeden kaç ruhla başlayacağını bilir (bkz. progression.gd).
+	var start_souls = Label.new()
+	start_souls.text = "Başlangıç ruhu: %d + %d" % [
+		Economy.BASE_START_MONEY, Progression.get_starting_soul_bonus()]
+	start_souls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	start_souls.add_theme_color_override("font_color", Color("#FBE6B8"))   # Eter
+	vbox.add_child(start_souls)
+
 	var spacer = Control.new()
 	spacer.custom_minimum_size = Vector2(0, 26)
 	vbox.add_child(spacer)
 
 	vbox.add_child(_menu_button("Oyna", _on_play_pressed))
 	vbox.add_child(_menu_button("Nasıl Oynanır", _on_tutorial_pressed))
+	vbox.add_child(_menu_button("İlerleme", _on_progress_pressed))
 	vbox.add_child(_menu_button("Çıkış", _on_quit_pressed))
 
 
@@ -106,6 +117,15 @@ func _on_play_pressed() -> void:
 func _on_tutorial_pressed() -> void:
 	tutorial_requested.emit()
 	queue_free()
+
+
+# İlerleme ekranı menünün üstünde açılır ve menünün çocuğu olarak durur: menü
+# kapandığında (Oyna/Nasıl Oynanır) onunla birlikte silinir. İlk basışta kurulur.
+func _on_progress_pressed() -> void:
+	if progress_panel == null:
+		progress_panel = ProgressionPanel.new()
+		add_child(progress_panel)
+	progress_panel.set_open(true)
 
 
 func _on_quit_pressed() -> void:

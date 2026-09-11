@@ -1,22 +1,84 @@
 class_name TileGenerator  # Bu script'i "TileGenerator" adıyla her yerden çağırabiliriz
 extends RefCounted         # Sahneye bağlı olmayan, saf mantık sınıfı
 
-# Kenar üretiminde her elementin çekilme AĞIRLIĞI (yüzde gibi düşünebilirsin, toplamı 100)
-const EDGE_WEIGHTS = {
-	TileDef.Element.ETHER: 25,
-	TileDef.Element.FIRE: 15,
-	TileDef.Element.WATER: 15,
-	TileDef.Element.EARTH: 15,
-	TileDef.Element.AIR: 15,
-	TileDef.Element.VOID: 15,
-}
+# Kenar üretiminde her elementin çekilme AĞIRLIĞI (yüzde gibi düşünülebilir,
+# her satırın toplamı 100). Ağırlıklar SABİT DEĞİL, tile'ın konacağı hücrenin
+# SATIRINA bağlı: dizinin index'i satır numarasıdır (0 = en üst/kazanma satırı,
+# 7 = en alt/başlangıç satırı).
+#
+# Yukarı çıkıldıkça Eter azalır (%30 -> %9), Boşluk artar (%10 -> %31); dört
+# gerçek elementin payı her satırda sabittir (%15 x 4 = %60). Böylece tahtanın
+# üst yarısında hem joker kenar bulmak zorlaşır hem de yolu tıkayan boşluk
+# kenarları çoğalır — ilerlemek kademeli olarak zorlaşır.
+#
+# Kademe oyuncunun ULAŞTIĞI en yüksek satıra göre değil, o an seçilen hücrenin
+# satırına göre işler: yukarıdan bir hücre seçen zor, aşağıdan seçen kolay
+# oranlarla çekiliş görür.
+#
+# NOT: Bu, fiyatları da dolaylı olarak değiştirir — compute_price'ta Eter
+# pahalılık, Boşluk indirim kaynağı olduğu için üst satırlarda tile'lar ortalama
+# daha ucuz ama yerleştirmesi daha zor olur. Bilinçli bir tasarım kararı,
+# compute_price'ı buna göre "düzeltmeye" çalışma.
+const ROW_EDGE_WEIGHTS = [
+	{TileDef.Element.ETHER:  9, TileDef.Element.VOID: 31,   # satır 0 — kazanma satırı
+		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
+		TileDef.Element.EARTH: 15, TileDef.Element.AIR: 15},
+	{TileDef.Element.ETHER: 12, TileDef.Element.VOID: 28,   # satır 1
+		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
+		TileDef.Element.EARTH: 15, TileDef.Element.AIR: 15},
+	{TileDef.Element.ETHER: 15, TileDef.Element.VOID: 25,   # satır 2
+		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
+		TileDef.Element.EARTH: 15, TileDef.Element.AIR: 15},
+	{TileDef.Element.ETHER: 18, TileDef.Element.VOID: 22,   # satır 3
+		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
+		TileDef.Element.EARTH: 15, TileDef.Element.AIR: 15},
+	{TileDef.Element.ETHER: 21, TileDef.Element.VOID: 19,   # satır 4
+		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
+		TileDef.Element.EARTH: 15, TileDef.Element.AIR: 15},
+	{TileDef.Element.ETHER: 24, TileDef.Element.VOID: 16,   # satır 5
+		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
+		TileDef.Element.EARTH: 15, TileDef.Element.AIR: 15},
+	{TileDef.Element.ETHER: 27, TileDef.Element.VOID: 13,   # satır 6
+		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
+		TileDef.Element.EARTH: 15, TileDef.Element.AIR: 15},
+	{TileDef.Element.ETHER: 30, TileDef.Element.VOID: 10,   # satır 7 — başlangıç satırı
+		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
+		TileDef.Element.EARTH: 15, TileDef.Element.AIR: 15},
+]
 
-# Ağırlıklı rastgele seçim: örneğin Eter'in ağırlığı 25 ise, 100 denemede ortalama 25 kez seçilir
+
+func _init() -> void:
+	_validate_row_weights()
+
+
+# Tablo elle düzenlenirken bir satırın toplamı 100'den kayarsa hiçbir yerde hata
+# çıkmaz — _weighted_pick toplamı kendisi hesapladığı için çekiliş çalışmaya
+# devam eder, yalnızca oranlar sessizce bozulur. Bu yüzden her oyun başında bir
+# kez doğrulanıyor.
+func _validate_row_weights() -> void:
+	assert(ROW_EDGE_WEIGHTS.size() == Board.ROWS,
+		"Ağırlık tablosu %d satır, tahta %d satır" % [ROW_EDGE_WEIGHTS.size(), Board.ROWS])
+	for row in range(ROW_EDGE_WEIGHTS.size()):
+		var total = 0
+		for weight in ROW_EDGE_WEIGHTS[row].values():
+			total += weight
+		assert(total == 100, "Satır %d ağırlıklarının toplamı 100 değil: %d" % [row, total])
+
+
+# Verilen satırın ağırlık tablosu. Satır tahtanın dışında kalırsa en yakın
+# sınıra kırpılır (çağıran tarafta bir hata varsa çekiliş üretimi çökmesin).
+func _row_weights(row: int) -> Dictionary:
+	return ROW_EDGE_WEIGHTS[clampi(row, 0, ROW_EDGE_WEIGHTS.size() - 1)]
+
+# Ağırlıklı rastgele seçim: bir elementin ağırlığı 25 ise, 100 denemede ortalama
+# 25 kez seçilir. Toplam tablodan okunur, 100 varsayılmaz — Element Sözleşmesi
+# kalıntısı bir elementi havuzdan çıkardığında toplam 100'ün altına düşer ve
+# kalan ağırlıklar kendi aralarında yeniden oranlanır.
 func _weighted_pick(weights: Dictionary):
 	var total = 0
 	for w in weights.values():
-		total += w                  # Tüm ağırlıkları toplayınca 100 çıkmalı
-	var roll = randi() % total       # 0 ile 99 arası rastgele bir sayı seç
+		total += w
+	var roll = randi() % total       # 0 ile (toplam-1) arası rastgele bir sayı
 	var cumulative = 0
 	for key in weights.keys():
 		cumulative += weights[key]
@@ -24,17 +86,19 @@ func _weighted_pick(weights: Dictionary):
 			return key                # ...o elementi döndür
 	return weights.keys()[0]         # Buraya normalde hiç düşmemeli, güvenlik amaçlı
 
-# Element Sözleşmesi kalıntısı bir elementi kenar havuzundan tamamen çıkarır.
-func _edge_weights() -> Dictionary:
-	var w = EDGE_WEIGHTS.duplicate()
-	for element in EDGE_WEIGHTS.keys():
+# O satırın ağırlıkları + Element Sözleşmesi kalıntısı: yasaklanan element kenar
+# havuzundan tamamen çıkarılır.
+func _edge_weights(row: int) -> Dictionary:
+	var w = _row_weights(row).duplicate()
+	for element in w.keys():
 		if RelicManager.element_forbidden(element):
 			w.erase(element)
 	return w
 
-# Rastgele 4 kenarlı bir set üretir: {"N":Element, "E":Element, "S":Element, "W":Element}
-func generate_edges() -> Dictionary:
-	var weights = _edge_weights()
+# Verilen SATIRIN oranlarıyla rastgele 4 kenarlı bir set üretir:
+# {"N":Element, "E":Element, "S":Element, "W":Element}
+func generate_edges(row: int) -> Dictionary:
+	var weights = _edge_weights(row)
 	return {
 		"N": _weighted_pick(weights),
 		"E": _weighted_pick(weights),
@@ -80,9 +144,9 @@ func pick_random_creature() -> int:
 		creatures = TileDef.Creature.values()   # güvenlik: hepsi yasaklandıysa
 	return creatures[randi() % creatures.size()]
 
-# Tek bir "tile + yaratık" çifti üretir
-func generate_draft_pair() -> Dictionary:
-	var edges = generate_edges()
+# Tek bir "tile + yaratık" çifti üretir (kenarlar verilen satırın oranlarıyla)
+func generate_draft_pair(row: int) -> Dictionary:
+	var edges = generate_edges(row)
 	# Fiyat, Eter Dokusu override'ından ÖNCE hesaplanır: kenar Eter'e dönse bile
 	# tile'ın fiyatı artmaz.
 	var price = compute_price(edges)
@@ -92,13 +156,14 @@ func generate_draft_pair() -> Dictionary:
 	var creature = pick_random_creature()
 	return {"edges": edges, "price": price, "creature": creature}
 
-# Çekiliş üretir (her turda oyuncuya gösterilecek seçenekler). Seçenek sayısı
+# Çekiliş üretir (her turda oyuncuya gösterilecek seçenekler). row: tile'ın
+# konacağı hücrenin satırı — kenar oranları buna göre seçilir. Seçenek sayısı
 # normalde 3, Zaman Kumu kalıntısıyla 4. Karanlık Tohum armed ise en az bir
 # seçenek Dagon olur (garantiyi board_view gerçek çekilişi gösterince temizler).
-func generate_draft() -> Array:
+func generate_draft(row: int) -> Array:
 	var pairs = []
 	for i in range(RelicManager.draft_size()):
-		pairs.append(generate_draft_pair())
+		pairs.append(generate_draft_pair(row))
 
 	if RelicManager.wants_dagon_guarantee() and not RelicManager.creature_forbidden(TileDef.Creature.DAGON):
 		var has_dagon = false

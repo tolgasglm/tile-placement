@@ -9,8 +9,9 @@ extends CanvasLayer
 #      Sözleşmesi). Açıkken tam ekran bir engel tüm tıkları yutar, oyun
 #      etkileşimi seçim bitene kadar kilitli kalır.
 #   2. Kılık Taşı için ayrı bir "yaratığı dönüştür" seçim ekranı (aynı modal).
-#   3. Sol alt köşede sürekli duran "sahip olunan kalıntılar" listesi. Tek
-#      kullanımlıklar harcanmadıysa tıklanabilir düğme, harcandıysa soluk yazı.
+#   3. Çekiliş panelinin hemen üstünde, soldan sağa dizilen "sahip olunan
+#      kalıntılar" şeridi. Tek kullanımlıklar harcanmadıysa tıklanabilir düğme,
+#      harcandıysa soluk yazı.
 #
 # main.gd bu düğümü çalışma anında yaratıp board_view'e referansını verir.
 # Tipografi/renkler draft_ui.gd / legend_ui.gd ile aynı.
@@ -22,6 +23,8 @@ signal creature_swap_chosen(creature: int)         # Kılık Taşı — hedef ya
 const LAYER := 15
 const MARGIN := 24.0
 const CARD_WIDTH := 240.0
+const BAR_GAP := 8.0        # şerit ile altındaki eylem paneli arasındaki boşluk
+const BAR_FONT_SIZE := 14   # şerit yatay olduğu için ana panellerden küçük
 const BACKDROP_COLOR := Color(0.039, 0.043, 0.086, 0.82)
 
 const TITLE_COLOR := Color("#8FE8FF")
@@ -44,7 +47,12 @@ var _subtitle: Label
 var _content_row: HBoxContainer
 
 var _bar_panel: PanelContainer
-var _bar: VBoxContainer
+var _bar: HFlowContainer
+
+# Kalıntı şeridinin hizalandığı sahne düğümü: sağ sütun (SidePanels). main.gd
+# bunu düğüm ağaca eklenmeden ÖNCE verir. Verilmezse şerit eski davranışına,
+# ekranın sol alt köşesine düşer.
+var bar_anchor: Control
 
 
 func _ready() -> void:
@@ -211,25 +219,65 @@ func _creature_options() -> Array:
 	return out
 
 
-# --- Sol alt köşe: sahip olunan kalıntılar --------------------------
+# --- Çekiliş panelinin üstü: sahip olunan kalıntılar ----------------
 
 func _build_bar() -> void:
 	_bar_panel = PanelContainer.new()
-	_bar_panel.add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_LOG, 22, 12))
+	# GEÇİCİ: şeridin çerçevesi yok. Diğer paneller UiTheme.frame_stylebox ile
+	# süslü çerçeve alır, bu almıyor — kalıntılar ileride yazı yerine kendi
+	# görselleriyle gösterilecek ve şeridin tasarımı o zaman yeniden yapılacak.
+	# Boş stylebox yalnızca içeriği kenardan biraz uzak tutuyor.
+	var bar_style := StyleBoxEmpty.new()
+	bar_style.set_content_margin_all(4)
+	_bar_panel.add_theme_stylebox_override("panel", bar_style)
 	_bar_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(_bar_panel)
 
-	_bar = VBoxContainer.new()
-	_bar.add_theme_constant_override("separation", 4)
+	# Kalıntılar soldan sağa dizilir. HFlowContainer (düz HBox değil): şeridin
+	# genişliği sütunla sınırlı, kalıntı adları uzun — sığmayan öge bir alt
+	# satıra taşar, sütunun dışına taşıp tahtanın üstüne binmez.
+	_bar = HFlowContainer.new()
+	_bar.add_theme_constant_override("h_separation", 10)
+	_bar.add_theme_constant_override("v_separation", 4)
 	_bar_panel.add_child(_bar)
+	# Konum/boyut _process'te yazıldığı için resized/size_changed sinyallerine
+	# bağlanmıyoruz: boyutu kendimiz atadığımızdan sinyal geri besleme yapardı.
 
-	_bar_panel.resized.connect(_reposition_bar)
-	get_viewport().size_changed.connect(_reposition_bar)
 
-
+# Şerit, üç eylem panelinin (çekiliş/yerleştirme/yaratık) paylaştığı kutunun
+# hemen ÜSTÜNE, sağ sütunla aynı genişlikte oturur. O kutu sütunun en üstündeki
+# Spacer'ın altından başladığı için hizayı Spacer'ın yüksekliği veriyor; Spacer
+# hep görünür olduğundan panellerin gizlenip görünmesinden etkilenmez.
+#
+# Konum ve boyut her karede yazılır (money_log_ui.gd ile aynı yaklaşım): şeridin
+# yüksekliği içeriği kaç satıra taştığına bağlı ve bu ancak genişlik atandıktan
+# sonraki yerleşim geçişinde belli olur.
 func _reposition_bar() -> void:
-	var vp := get_viewport().get_visible_rect().size
-	_bar_panel.position = Vector2(MARGIN, vp.y - _bar_panel.size.y - MARGIN)
+	if _bar_panel == null or not _bar_panel.visible:
+		return
+	if bar_anchor == null:
+		# Hiza verilmediyse eski davranış: ekranın sol alt köşesi.
+		var vp := get_viewport().get_visible_rect().size
+		_bar_panel.position = Vector2(MARGIN, vp.y - _bar_panel.size.y - MARGIN)
+		return
+
+	var column := bar_anchor.get_global_rect()
+	_bar_panel.size.x = column.size.x
+	_bar_panel.size.y = _bar_panel.get_combined_minimum_size().y
+	var panels_top := column.position.y + _bar_anchor_spacer_height()
+	_bar_panel.position = Vector2(column.position.x, panels_top - _bar_panel.size.y - BAR_GAP)
+
+
+# Sağ sütunun en üstündeki Spacer: eylem panelleri onun altından başlar.
+func _bar_anchor_spacer_height() -> float:
+	if bar_anchor.get_child_count() == 0:
+		return 0.0
+	var spacer := bar_anchor.get_child(0) as Control
+	return spacer.size.y if spacer != null else 0.0
+
+
+func _process(_delta: float) -> void:
+	_reposition_bar()
 
 
 func _refresh_bar() -> void:
@@ -243,11 +291,9 @@ func _refresh_bar() -> void:
 	if defs.is_empty():
 		return
 
-	var header := Label.new()
-	header.text = "Kalıntılar"
-	header.add_theme_color_override("font_color", TITLE_COLOR)
-	_bar.add_child(header)
-
+	# Yatay şeritte "Kalıntılar" başlığı yok: dar sütunda kalıntı adlarına yer
+	# bırakmak için çıkarıldı. Her ögenin tooltip'i zaten kalıntının açıklamasını
+	# gösteriyor.
 	for def in defs:
 		if RelicManager.is_bar_activatable(def.id) and not RelicManager.is_spent(def.id):
 			# Elle tetiklenen tek kullanımlık: tıklanınca board_view'e etkinleştir sinyali.
@@ -256,6 +302,7 @@ func _refresh_bar() -> void:
 			btn.text = "▸ " + def.display_name
 			btn.tooltip_text = def.description
 			btn.focus_mode = Control.FOCUS_NONE
+			btn.add_theme_font_size_override("font_size", BAR_FONT_SIZE)
 			btn.pressed.connect(func(): relic_activated.emit(def.id))
 			_bar.add_child(btn)
 		else:
@@ -263,7 +310,9 @@ func _refresh_bar() -> void:
 			row.text = "• " + def.display_name
 			row.tooltip_text = def.description
 			row.mouse_filter = Control.MOUSE_FILTER_STOP   # Label varsayılanı IGNORE; tooltip için gerekli
+			row.add_theme_font_size_override("font_size", BAR_FONT_SIZE)
 			row.add_theme_color_override("font_color", NAME_COLOR)
+			row.size_flags_vertical = Control.SIZE_SHRINK_CENTER   # düğmelerle aynı hizada dursun
 			if RelicManager.is_spent(def.id):
 				row.modulate.a = 0.4
 			_bar.add_child(row)

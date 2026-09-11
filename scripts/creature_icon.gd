@@ -4,7 +4,11 @@ extends Control
 var creature: int = 0
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(28, 28)
+	# Varsayılan boyut. Çağıran (yaratık referansı, öğretici) daha büyük bir
+	# boyut verdiyse ona dokunulmaz — _ready node ağaca girince çalıştığı için
+	# koşulsuz atama, kurulumda verilen boyutu eziyordu.
+	if custom_minimum_size == Vector2.ZERO:
+		custom_minimum_size = Vector2(28, 28)
 
 func _draw() -> void:
 	var size = get_rect().size

@@ -5,6 +5,11 @@ class_name UiTheme
 # olarak esnetildiklerinde yalnızca süsleme kenarı korunur, orta bölge panelin
 # kendi düz zemini olarak uzar.
 
+# Oyunun orman fonu. Açılış menüsünün arkasında tam ekran, öğretici kutusunun
+# içinde ise kırpılıp koyulaştırılmış olarak kullanılır — iki yer de buradan
+# okur, dosya yolu tekrarlanmaz.
+const BACKGROUND = preload("res://assets/background.png")
+
 const PANEL_LEGEND = preload("res://assets/ui/panel_legend.png")
 const PANEL_DRAFT = preload("res://assets/ui/panel_draft.png")
 const PANEL_LOG = preload("res://assets/ui/panel_log.png")

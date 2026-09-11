@@ -1,11 +1,20 @@
 class_name Economy   # Sadece para/ekonomi durumunu yönetir
 extends RefCounted
 
-const START_MONEY = 15      # Dokümandaki başlangıç parası
+const BASE_START_MONEY = 15  # Dokümandaki başlangıç parası — kalıcı bonus hariç taban
 const MIX_EXTRA_COST = 1    # Çiftleri karıştırma ek ücreti (dokümanla aynı)
 const REFRESH_COST = 1      # Yenileme ücreti — doküman "playtest ile ayarlanacak" diyor, şimdilik 2
 
-var money: int = START_MONEY   # Oyuncunun anlık parası, başlangıçta START_MONEY
+# Başlangıç parası artık sabit değil: kalıcı ilerlemede açılan eşiklerin ödülü
+# eklenir (bkz. progression.gd), yani 15 ile 27 arasında bir değer. Const
+# olamaz çünkü değer user://progress.cfg'den okunuyor.
+static func start_money() -> int:
+	return BASE_START_MONEY + Progression.get_starting_soul_bonus()
+
+var money: int = 0   # Oyuncunun anlık parası; _init başlangıç değerini verir
+
+func _init() -> void:
+	money = start_money()
 
 # Para harcar (tile satın alma, karıştırma, yenileme gibi durumlarda çağrılır)
 func spend(amount: int) -> void:

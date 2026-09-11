@@ -2,10 +2,22 @@ class_name CreatureScorer
 extends RefCounted
 
 var salamander_pair_count: int = 0
+
+# Bu yerleştirmede açılan kalıcı ilerleme eşikleri (Progression.THRESHOLDS
+# tanımları). Veri katmanı sahneyi tanımadığı için bildirimi kendisi gösteremez:
+# board_view her puanlamadan sonra bu listeyi boşaltıp ekrana basar.
+var new_unlocks: Array = []
 # Bir çifte dahil olmuş Salamander hücreleri ("r,c" -> true). Her Salamander en
 # fazla bir çifte girer: İkiz Kor'da bir Salamander birçok aday eşe sahip olabilir,
 # bu yüzden çift-anahtarı değil hücre tüketimi izlenir.
 var paired_salamander_cells: Dictionary = {}
+
+# Kalıcı ilerleme eşiklerini yoklar. Ölçülen değerleri zaten bu sınıf
+# hesapladığı için kontrol de burada yapılıyor; açılan eşikler biriktirilip
+# board_view'e bırakılıyor.
+func _check_progression(creature: int, value: int) -> void:
+	new_unlocks.append_array(Progression.check_threshold(creature, value))
+
 
 func _neighbor_coord(row: int, col: int, dir: String) -> Array:
 	match dir:
@@ -128,11 +140,13 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 			payment = 4 + (salamander_pair_count - 1) * 2
 			payment += RelicManager.salamander_pair_bonus()   # Alev Mührü: her çifte +2
 			print("Salamander simetrik çift #%d tamamlandı, ödeme: %d" % [salamander_pair_count, payment])
+			_check_progression(creature, salamander_pair_count)
 		else:
 			print("Salamander yerleşti, henüz simetrik eşi yok")
 
 	elif creature == TileDef.Creature.ROC:
 		var size = _group_size(board, row, col, creature)
+		_check_progression(creature, size)
 		if size >= 2:
 			# Sürü Tüyü: ödeme bir basamak yukarıdan başlar (2'li grup 3 öder)
 			payment = size + RelicManager.roc_group_bonus()
@@ -145,6 +159,7 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 		if dist != -1:
 			payment = dist
 			print("Golem, en yakın eşe %d birim mesafede, ödeme: %d" % [dist, payment])
+			_check_progression(creature, dist)
 		else:
 			print("İlk Golem yerleşti, eş bekleniyor")
 
@@ -152,6 +167,7 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 		var count = _filled_neighbor_count_8(board, row, col)
 		cell.abzu_last_count = count
 		payment = count
+		_check_progression(creature, count)
 		if count > 0:
 			print("Abzu çevresinde %d dolu tile var, ödeme: %d" % [count, payment])
 		else:
@@ -159,6 +175,7 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 
 	elif creature == TileDef.Creature.DAGON:
 		var diag = _diagonal_creature_count(board, row, col, creature)
+		_check_progression(creature, diag)
 		if diag > 0:
 			# Gölge Bağı: çapraz başına 2 yerine 3
 			payment = diag * RelicManager.dagon_per_diagonal()
@@ -175,6 +192,9 @@ func update_abzu_neighbors(board: Board, row: int, col: int) -> int:
 		if cell != null and cell.placed_creature == TileDef.Creature.ABZU:
 			var new_count = _filled_neighbor_count_8(board, pos[0], pos[1])
 			var old_count = cell.abzu_last_count
+			# Abzu'nun yüksek değerleri asıl BURADA oluşuyor (yerleştirme anında
+			# çevresi çoğu zaman boş), o yüzden eşik kontrolü burada da gerekli.
+			_check_progression(TileDef.Creature.ABZU, new_count)
 			if new_count > old_count:
 				cell.abzu_last_count = new_count
 				var extra = new_count - old_count

@@ -23,6 +23,7 @@ const SOUND_LOSE: AudioStream = preload("res://assets/voices/defeat.wav")
 const SOUND_KEY_COLLECT_PATH := "res://assets/voices/key.wav"   # anahtar hücresine tile konduğunda
 const SOUND_LOCK_STEP_PATH := ""                                 # kilit bir aşama ilerlediğinde
 const SOUND_LOCK_OPEN_PATH := ""                                 # dördüncü anahtarda kilit açıldığında
+const SOUND_RELIC_PATH := "res://assets/voices/relic.wav"        # kalıntı seçildiğinde
 
 # Yaratık sesleri — TileDef.Creature enum sırasına göre
 const CREATURE_SOUNDS: Dictionary = {
@@ -44,6 +45,7 @@ const VOLUME_LOSE := 5.0
 const VOLUME_KEY_COLLECT := 0.0
 const VOLUME_LOCK_STEP := 0.0
 const VOLUME_LOCK_OPEN := 0.0
+const VOLUME_RELIC := 0.0
 
 # Yaratık sesleri kaynak dosyalarında farklı seviyelerde kaydedilmiş; burada
 # tek tek dengeleniyor (enum sırasına göre, dB cinsinden)
@@ -104,6 +106,9 @@ var game_over: bool = false
 var relic_panel
 var relics_enabled: bool = true
 
+# Kalıcı ilerleme bildirimi — kalıntı paneli gibi main.gd tarafından atanır.
+var progression_toast
+
 const WIN_ROW = Board.WIN_ROW
 const WIN_COL = Board.WIN_COL
 
@@ -151,6 +156,15 @@ func _ready() -> void:
 	placement_panel.confirm_requested.connect(_on_confirm_placement)
 	creature_panel.skip_requested.connect(_on_creature_skip)
 	creature_panel.burn_requested.connect(_on_creature_burn)   # Ruh Pazarı
+
+	# Kalıcı ilerleme bonusu başlangıç parasına zaten dahil (Economy.start_money);
+	# günlüğün ilk satırı olarak yazılıyor ki oyuncu 15'in üstüne ne eklendiğini
+	# görsün.
+	# call_deferred şart: MoneyLogPanel sahnede bizden SONRA geldiği için onun
+	# _ready'si henüz çalışmadı, satır kutusu daha kurulmadı.
+	var soul_bonus = Progression.get_starting_soul_bonus()
+	if soul_bonus > 0:
+		money_log_panel.log_gain.call_deferred("Kalıcı bonus", soul_bonus)
 
 	_render_board()
 
@@ -282,7 +296,9 @@ func _show_draft_for_pending() -> void:
 		return
 	var row = pending_cell[0]
 	var col = pending_cell[1]
-	var draft = generator.generate_draft()
+	# Kenar oranları seçilen hücrenin satırından gelir: yukarıdaki hücrelerde
+	# Eter azalır, Boşluk artar (bkz. TileGenerator.ROW_EDGE_WEIGHTS).
+	var draft = generator.generate_draft(row)
 	if not economy.can_afford_anything(draft):
 		_trigger_lose()
 		return
@@ -366,7 +382,8 @@ func _on_refresh_selected() -> void:
 		_trigger_lose()
 		return
 
-	var draft = generator.generate_draft()
+	# Yenileme de aynı hücre için: oranlar yine pending_cell'in satırından gelir.
+	var draft = generator.generate_draft(pending_cell[0])
 
 	if not economy.can_afford_anything(draft):   # yenileme sonrası da kontrol ediyoruz
 		_trigger_lose()
@@ -510,6 +527,7 @@ func _on_key_collected(key_index: int) -> void:
 # yeniden çizer (kalıntı tahtayı/kilidi etkileyebilir), sonra bu turun çekilişini
 # üretip gösterir — artık seçilen kalıntının etkileri de çekilişe yansır.
 func _on_relic_chosen(_relic_id: String) -> void:
+	_play_sfx_path(SOUND_RELIC_PATH, VOLUME_RELIC)
 	_render_board()
 	_show_draft_for_pending()
 
@@ -600,6 +618,7 @@ func _on_creature_target_pressed(row: int, col: int) -> void:
 	var payment = scorer.score_placement(board, row, col, placed_type)
 	economy.gain(payment)
 	money_log_panel.log_gain(CREATURE_NAMES[placed_type], payment)
+	_flush_progression_unlocks()
 
 	if placed_type == TileDef.Creature.DAGON:
 		RelicManager.arm_dagon_guarantee()   # Karanlık Tohum: sıradaki çekilişte Dagon garantisi
@@ -664,11 +683,37 @@ func _on_relic_activated(relic_id: String) -> void:
 				return
 			relic_panel.open_creature_swap()   # seçim -> _on_creature_swapped
 
+# CreatureScorer'ın biriktirdiği yeni kalıcı ilerleme eşiklerini ekrana basar ve
+# listeyi boşaltır. Ödül BU koşunun parasına eklenmez — sonraki koşuların
+# başlangıç ruhunu artırır (bkz. Economy.start_money), o yüzden ruh günlüğüne
+# de yazılmaz.
+func _flush_progression_unlocks() -> void:
+	if scorer.new_unlocks.is_empty():
+		return
+	for def in scorer.new_unlocks:
+		print("Kalıcı eşik açıldı: %s (+%d başlangıç ruhu)" % [def["title"], def["reward"]])
+		if progression_toast != null:
+			progression_toast.show_unlock(def)
+	scorer.new_unlocks.clear()
+
+
 func _check_stuck_after_creature() -> void:
 	# Yaratık ödemesi parayı kurtarmadıysa, oyuncuyu boş yere yeni bir hücre
 	# açmaya zorlamadan burada bitir — sonraki hiçbir çekiliş/yenileme karşılanamaz
-	if not economy.can_afford_anything(generator.generate_draft()):
+	if not economy.can_afford_anything(generator.generate_draft(_cheapest_open_row())):
 		_trigger_lose()
+
+
+# Kilitlenme kontrolü için satır: oyuncu henüz hücre seçmediğinden hangi satırın
+# oranlarıyla çekiliş üretileceği belli değil. Açık hücrelerin EN ÜSTTEKİ satırı
+# seçilir; üst satırlarda Eter az, Boşluk çok olduğu için tile'lar ortalama en
+# ucuz orada çıkar. Yani test oyuncunun lehine kurulur: "en ucuz ihtimalde bile
+# hiçbir şey alamıyorsa" oyun biter, tersi durumda oyun sürer.
+func _cheapest_open_row() -> int:
+	var row = Board.ROWS - 1
+	for cell in board.get_expandable_cells():
+		row = mini(row, cell[0])
+	return row
 
 func _on_creature_skip() -> void:
 	print("%s yerleştirilmeden kayboldu" % CREATURE_NAMES[pending_creature])
@@ -748,6 +793,9 @@ func _finalize_tile_placement(rotation: int) -> void:
 	if abzu_extra > 0:
 		economy.gain(abzu_extra)
 		money_log_panel.log_gain(CREATURE_NAMES[TileDef.Creature.ABZU], abzu_extra)
+	# Abzu'nun kalıcı ilerleme eşikleri asıl burada açılır: komşu sayısı
+	# yerleştirmeden sonra, çevre doldukça artıyor.
+	_flush_progression_unlocks()
 
 	# Kazanma hücresi dolduysa kazanıldı. Ayrıca anahtar kontrolüne gerek yok:
 	# hücre dört anahtar toplanana kadar kilitli olduğu için (Board.is_win_cell_locked)

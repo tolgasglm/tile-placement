@@ -28,12 +28,25 @@ func _ready() -> void:
 	# Kalıntı seçim ekranı + sol alttaki kalıntı listesi. board_view çalışma
 	# anında yaratılan bu düğümü %isim ile bulamaz, referansını buradan veriyoruz.
 	relic_panel = RelicPanel.new()
+	# Sahip olunan kalıntılar şeridi çekiliş panelinin hemen üstüne yerleşir.
+	# Hizayı sağ sütundan (DraftPanel'in ebeveyni) okur — DraftPanel'in kendisi
+	# gizliyken rect'i geçersiz kaldığı için değil, her zaman görünen
+	# konteyner referans alınıyor (money_log_ui.gd de aynı nedenle böyle yapar).
+	# Referans add_child'dan ÖNCE veriliyor, çünkü şeridi _ready kuruyor.
+	relic_panel.bar_anchor = get_node("%DraftPanel").get_parent()
 	add_child(relic_panel)
 	var board_view = get_node("%GridContainer")   # untyped: board_view.gd'nin class_name'i yok
 	board_view.relic_panel = relic_panel
 	relic_panel.relic_chosen.connect(board_view._on_relic_chosen)
 	relic_panel.relic_activated.connect(board_view._on_relic_activated)
 	relic_panel.creature_swap_chosen.connect(board_view._on_creature_swapped)
+
+	# Kalıcı ilerleme bildirimi (eşik açıldığında ekranın üstünde beliren kutu).
+	# Kalıntı paneli gibi çalışma anında yaratıldığı için referansı buradan
+	# veriliyor.
+	var progression_toast = ProgressionToast.new()
+	add_child(progression_toast)
+	board_view.progression_toast = progression_toast
 
 	tutorial = TutorialManager.new()
 	add_child(tutorial)

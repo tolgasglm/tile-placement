@@ -25,6 +25,10 @@ const ELEMENT_COLORS = {
 	5: Color(0, 0, 0, 0), # Boşluk — hiç çizilmez, arkadaki fon görünür
 }
 
+# Element adları (aynı enum sırası). Elementin görünüşü burada tanımlı olduğu
+# için adı da burada duruyor; öğretici kenar eşleşmesini anlatırken buradan okur.
+const ELEMENT_NAMES = ["Ateş", "Su", "Toprak", "Hava", "Eter", "Boşluk"]
+
 # Element dokuları — VOID (5) hariç her element için, kenar üçgenlerinde kullanılır
 const ELEMENT_TEXTURES = {
 	0: preload("res://assets/elements/alev.png"),
