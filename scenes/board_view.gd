@@ -695,6 +695,11 @@ func _flush_progression_unlocks() -> void:
 		if progression_toast != null:
 			progression_toast.show_unlock(def)
 	scorer.new_unlocks.clear()
+	# Skor tablosundaki eşik hücresi hemen altına dönsün — oyuncu neyi
+	# açtığını tabloda da görsün.
+	var scoreboard = get_node_or_null("%ScoreboardPanel")
+	if scoreboard != null:
+		scoreboard.refresh_thresholds()
 
 
 func _check_stuck_after_creature() -> void:

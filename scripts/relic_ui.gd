@@ -32,6 +32,12 @@ const NAME_COLOR := Color("#FBE6B8")
 const DESC_COLOR := Color("#D6D2E8")
 const MUTED_COLOR := Color("#A8A0C8")
 
+# Seçim ekranındaki kartların kendisi düğmedir; ayrı bir "Seç" düğmesi yok.
+# Üzerine gelindiğini ton farkıyla belli ediyoruz (saydamlıkla değil): boştayken
+# hafif koyu, fare üzerindeyken tam parlak — gezinme düğmelerindeki tarifin aynısı.
+const CARD_TINT_IDLE := Color(0.82, 0.82, 0.86)
+const CARD_TINT_HOVER := Color(1.0, 1.0, 1.0)
+
 # value = TileDef.Element enum'ı (FIRE=0, WATER=1, EARTH=2, AIR=3). Eter/Void
 # bilerek dışarıda: sözleşmeyle yasaklanmaları oyunu kilitleyebilir.
 const ELEMENT_OPTIONS := [
@@ -119,13 +125,19 @@ func open(choices: Array) -> void:
 	backdrop.visible = true
 
 
+# Bir kalıntı kartı. Kartın çerçevesi düğmedir: tıklanınca kalıntı seçilir.
 func _make_relic_card(def: RelicDef) -> Control:
-	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_DRAFT, 26, 14))
+	var card := _make_clickable_frame(14.0, _on_relic_pick.bind(def.id))
 	card.custom_minimum_size = Vector2(CARD_WIDTH, 0)
+	# Kartlar aynı yüksekliğe uzasın: hem tıklama alanları eşit olur hem de
+	# açıklaması kısa olan kart diğerlerinden güdük durmaz.
+	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
+	# İçerik tıkları yutmasın, hepsi çerçeveye gitsin (Label'ların varsayılanı
+	# zaten IGNORE, konteynerinki değil).
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(v)
 
 	var name_label := Label.new()
@@ -149,11 +161,25 @@ func _make_relic_card(def: RelicDef) -> Control:
 		tag.add_theme_color_override("font_color", MUTED_COLOR)
 		v.add_child(tag)
 
-	var pick := Button.new()
-	pick.text = "Seç"
-	pick.pressed.connect(_on_relic_pick.bind(def.id))
-	v.add_child(pick)
 	return card
+
+
+# Çerçeveli, tıklanabilir bir kutu üretir: panel dokusu + el imleci + üzerine
+# gelince ton değişimi. Hem kalıntı kartları hem de sözleşme/kılık seçenekleri
+# bunu kullanır, böylece seçim ekranında hiç düğme kalmaz.
+func _make_clickable_frame(content_pad: float, action: Callable) -> PanelContainer:
+	var frame := PanelContainer.new()
+	frame.add_theme_stylebox_override("panel",
+		UiTheme.frame_stylebox(UiTheme.PANEL_DRAFT, 26, content_pad))
+	frame.mouse_filter = Control.MOUSE_FILTER_STOP
+	frame.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	frame.modulate = CARD_TINT_IDLE
+	frame.mouse_entered.connect(func() -> void: frame.modulate = CARD_TINT_HOVER)
+	frame.mouse_exited.connect(func() -> void: frame.modulate = CARD_TINT_IDLE)
+	frame.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed 				and event.button_index == MOUSE_BUTTON_LEFT:
+			action.call())
+	return frame
 
 
 func _on_relic_pick(relic_id: String) -> void:
@@ -205,11 +231,17 @@ func _show_option_choice(prompt: String, options: Array, cb: Callable) -> void:
 	_subtitle.text = prompt
 	_clear_content()
 	for opt in options:
-		var b := Button.new()
-		b.text = opt["label"]
-		b.custom_minimum_size = Vector2(130, 46)
-		b.pressed.connect(cb.bind(opt["value"]))   # pressed argümansız → cb(value) çağrılır
-		_content_row.add_child(b)
+		# Kalıntı kartlarıyla aynı dil: seçenek de çerçevenin kendisi.
+		var frame := _make_clickable_frame(10.0, cb.bind(opt["value"]))
+		frame.custom_minimum_size = Vector2(130, 56)
+		var label := Label.new()
+		label.text = opt["label"]
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.add_theme_color_override("font_color", NAME_COLOR)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE   # tık çerçeveye geçsin
+		frame.add_child(label)
+		_content_row.add_child(frame)
 
 
 func _creature_options() -> Array:
@@ -302,6 +334,9 @@ func _refresh_bar() -> void:
 			btn.text = "▸ " + def.display_name
 			btn.tooltip_text = def.description
 			btn.focus_mode = Control.FOCUS_NONE
+			# Şerit dar bir banda sığmak zorunda: normal boy düğme iki satırda
+			# taşırıyor (bkz. ui_theme.gd BUTTON_SMALL_HEIGHT).
+			btn.theme_type_variation = UiTheme.BUTTON_SMALL_VARIATION
 			btn.add_theme_font_size_override("font_size", BAR_FONT_SIZE)
 			btn.pressed.connect(func(): relic_activated.emit(def.id))
 			_bar.add_child(btn)

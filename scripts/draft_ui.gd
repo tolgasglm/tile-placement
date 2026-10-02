@@ -22,9 +22,10 @@ var current_money: int = 0     # etherize_all yeniden kurarken lazım
 var price_delta: int = 0       # Boşluk Deldirme / Çapraz Adım → +2
 var free_tile: bool = false    # Kadim Anahtar → anahtar hücresindeki tile bedava
 
-# Öğretici bu düğmeleri ekranda vurgulayabilmek için tutar; _rebuild her
-# çağrıldığında yeniden doldurulur
-var buy_buttons: Array = []
+# Satın alınabilir kartlar (TileCell). Ayrı bir "Al" düğmesi yok: kartın
+# kendisi düğme. Öğretici bunları ekranda vurgulayabilmek için okur; _rebuild
+# her çağrıldığında yeniden doldurulur.
+var buy_cards: Array = []
 var refresh_button: Button
 
 func _ready() -> void:
@@ -70,7 +71,7 @@ func etherize_all() -> void:
 func _rebuild(money: int) -> void:
 	for child in get_children():
 		child.queue_free()
-	buy_buttons.clear()
+	buy_cards.clear()
 
 	var vbox = VBoxContainer.new()
 	add_child(vbox)
@@ -99,26 +100,29 @@ func _rebuild(money: int) -> void:
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL   # üç kart genişliği eşit paylaşır
 		row.add_child(card)
 
-		# Tile önizlemesi — TileCell'i karta sığan boyutta yeniden kullanıyoruz
+		var eff_price = _effective_price(pair)
+		var affordable = money >= eff_price
+		var buyable = affordable and fits
+
+		# Tile önizlemesi — TileCell'i karta sığan boyutta yeniden kullanıyoruz.
+		# Satın alınabiliyorsa kartın kendisi düğmedir: ayrı bir "Al" düğmesi yok.
 		var preview = TileCell.new()
 		preview.cell_size = card_size
 		preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER   # YENİ
 		preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER     # YENİ
 		card.add_child(preview)
-		preview.set_static(pair["edges"], pair["creature"], not fits)
+		preview.set_static(pair["edges"], pair["creature"], not fits, buyable)
+		if buyable:
+			preview.clicked.connect(_on_buy_pressed.bind(i))
+			buy_cards.append(preview)
 
-		# Fiyat, tile'ın hemen altında ruh ikonunun içinde yazar
-		var eff_price = _effective_price(pair)
+		# Fiyat, tile'ın hemen altında ruh ikonunun içinde yazar. Alınamamanın
+		# iki sebebi görsel olarak ayrı: sığmıyorsa tile kırmızı çerçeveli,
+		# ruh yetmiyorsa fiyatın ışıması kızıl.
 		var price = SoulAmount.create(eff_price, card_size * PRICE_SOUL_RATIO)
+		price.affordable = affordable
 		price.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		card.add_child(price)
-
-		var buy_btn = Button.new()
-		buy_btn.text = "Al"
-		buy_btn.disabled = (money < eff_price) or not fits
-		buy_btn.pressed.connect(_on_buy_pressed.bind(i))
-		card.add_child(buy_btn)
-		buy_buttons.append(buy_btn)
 
 	# Yenileme ücreti de düğmenin yanında ruh ikonuyla gösterilir
 	var refresh_row = HBoxContainer.new()
@@ -138,13 +142,14 @@ func _rebuild(money: int) -> void:
 func _on_buy_pressed(index: int) -> void:
 	pair_selected.emit(current_draft[index])
 
-# Öğreticinin vurgulayacağı düğmeler: alınabilecek tile'lar. Hiçbiri alınamıyorsa
-# (pahalı ya da sığmıyor) oyuncunun tek çıkışı yenilemektir, o zaman onu gösterir.
+# Öğreticinin vurgulayacağı ögeler: alınabilecek tile kartları. Hiçbiri
+# alınamıyorsa (pahalı ya da sığmıyor) oyuncunun tek çıkışı yenilemektir,
+# o zaman yenileme düğmesini gösterir.
 func get_target_buttons() -> Array:
 	var targets = []
-	for btn in buy_buttons:
-		if is_instance_valid(btn) and not btn.disabled:
-			targets.append(btn)
+	for card in buy_cards:
+		if is_instance_valid(card):
+			targets.append(card)
 	if targets.is_empty() and is_instance_valid(refresh_button) and not refresh_button.disabled:
 		targets.append(refresh_button)
 	return targets

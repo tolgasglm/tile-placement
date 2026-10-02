@@ -27,6 +27,13 @@ window/size/viewport_height=820
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[gui]
+
+; Varsayılan 0.5 sn: oyun içi gezinme düğmelerinin (Ana Menü / Yeniden Başla)
+; ne işe yaradığı ve hangi tuşa bağlı olduğu, üzerine gelir gelmez görünsün.
+; Kalıntı şeridindeki açıklamalar da aynı anda açılır.
+timers/tooltip_delay_sec=0.0
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

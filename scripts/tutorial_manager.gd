@@ -64,7 +64,7 @@ const STEPS = [
 		"text": "Şimdi yaratığı yerleştir. Altın çerçeveli tile'lardan birine tıkla.",
 		"action": "", "extra": ""},
 	{"label": "Ruh sayacı",
-		"text": "Ruhunu sağ üstteki damlanın içinde görebilirsin.",
+		"text": "Ruhunu sağ üstteki damlanın içinde görebilirsin. Yaratıklarla ulaştığın başarılar sonraki oyunların başlangıç ruhunu kalıcı olarak artırır; ana menüdeki İlerleme ekranından takip edebilirsin.",
 		"action": "Devam", "extra": ""},
 	{"label": "Hedef",
 		"text": "Tahtadaki anahtarları topla ve en üste ulaş. Ruhun biterse kaybedersin.",
@@ -112,6 +112,7 @@ var box: PanelContainer
 var step_label: Label   # "Adım 3 / 9 · Döndür"
 var text_label: Label   # o adımın talimatı
 var action_button: Button
+var skip_button: Button   # "Atla" — son adımda gizlenir, orada yalnızca "Bitir" kalır
 
 # Metnin altındaki açıklama blokları. İkisi de bir kez kurulur, adım
 # değiştikçe yalnızca görünürlükleri değişir.
@@ -170,24 +171,8 @@ func _build_ui() -> void:
 	# Zemin kutudan ÖNCE eklenir ki kutunun altında kalsın; boyutu ve konumu
 	# _layout_box'ta kutununkine eşitlenir. Doku ile karartma, taşıyıcı Control'e
 	# tam-dikdörtgen anchor'la bağlı olduğu için onunla birlikte boyutlanırlar.
-	box_backdrop = Control.new()
-	box_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box_backdrop = UiTheme.art_backdrop(BOX_DIM_COLOR)
 	add_child(box_backdrop)
-
-	var backdrop_texture = TextureRect.new()
-	backdrop_texture.set_anchors_preset(Control.PRESET_FULL_RECT)
-	backdrop_texture.texture = UiTheme.BACKGROUND
-	# Fon kutuya sığdırılmaz, kırpılır: oran korunur, orman ezilmiş görünmez.
-	backdrop_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	backdrop_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	backdrop_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box_backdrop.add_child(backdrop_texture)
-
-	var backdrop_dim = ColorRect.new()
-	backdrop_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	backdrop_dim.color = BOX_DIM_COLOR
-	backdrop_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box_backdrop.add_child(backdrop_dim)
 
 	# Kutu overlay'den SONRA eklenir: hem üstünde çizilir hem de girdiyi önce
 	# o alır, böylece Atla/Devam düğmeleri kilide takılmaz.
@@ -228,7 +213,7 @@ func _build_ui() -> void:
 	action_button.pressed.connect(_on_action_pressed)
 	buttons.add_child(action_button)
 
-	var skip_button = Button.new()
+	skip_button = Button.new()
 	skip_button.text = "Atla"
 	skip_button.custom_minimum_size = Vector2(110, 34)
 	skip_button.pressed.connect(_on_skip_pressed)
@@ -328,6 +313,8 @@ func _show_step(new_step: int) -> void:
 	var action = STEPS[step]["action"]
 	action_button.visible = action != ""
 	action_button.text = action
+	# Son adımda atlanacak bir şey kalmadı: yalnızca "Bitir" gösterilir.
+	skip_button.visible = step != Step.GOAL
 
 
 # --- Hedefler ve yerleşim ----------------------------------------------------

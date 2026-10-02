@@ -20,6 +20,10 @@ func _ready() -> void:
 	add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_LOG, 28, 22))
 
 	custom_minimum_size = Vector2(260, 220)
+	# Sahne (yeniden) yüklendiği karede _process çalışmadan bir kez çizim yapılır
+	# ve genişliği veren sütun henüz yerleşmemiştir: o kare sol üst köşede
+	# görünmesin diye ilk konumlandırmaya kadar gizli kalır.
+	visible = false
 
 	var vbox = VBoxContainer.new()
 	add_child(vbox)
@@ -47,6 +51,7 @@ func _process(_delta: float) -> void:
 
 	var vp_size = get_viewport().get_visible_rect().size
 	position = Vector2(vp_size.x - size.x - 24, vp_size.y - size.y - 24)
+	visible = true
 
 # Bir yaratık yerleştirmesinden gelen ödemeyi günlüğe ekler — 0 ödeme
 # (henüz eş bulamamış bir yaratık gibi) günlüğü kalabalıklaştırmasın diye atlanır

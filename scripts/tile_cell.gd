@@ -10,6 +10,11 @@ var creature: int = -1   # -1 = yaratık yok
 var is_preview: bool = false
 var is_invalid: bool = false   # Sığmayan bir kartı kırmızı çerçeveyle işaretlemek için
 var is_target: bool = false    # Çekiliş sürerken seçili olan boş hücre
+# Çekiliş panelindeki satın alınabilir kart. Tahtadaki seçilebilir hücrelerden
+# ayrı tutuluyor: üzerine gelince vurgulanan ve el imleci gösteren tek hücre
+# türü bu, tahtanın kendi görsel dili değişmesin.
+var is_buyable: bool = false
+var is_hovered: bool = false
 var cell_size: float = 72.0    # YENİ: artık boyut dışarıdan ayarlanabilir (mini önizlemeler için)
 var has_key: bool = false      # Bu hücrede henüz toplanmamış bir anahtar var mı
 var lock_stage: int = -1       # Kazanma hücresinin kilit aşaması (0-4); -1 = kilit çizilmez
@@ -41,8 +46,24 @@ const ELEMENT_TEXTURES = {
 func _ready() -> void:
 	custom_minimum_size = Vector2(cell_size, cell_size)   # DEĞİŞTİ: sabit 72 yerine cell_size kullanıyor
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_entered.connect(_on_mouse_entered)
+	mouse_exited.connect(_on_mouse_exited)
 
-# Godot bu fonksiyonu, hücre her "yeniden çizilmesi gerENTRY_SOUL_SIZEekiyor" işaretlendiğinde otomatik çağırır
+
+func _on_mouse_entered() -> void:
+	if not is_buyable:
+		return
+	is_hovered = true
+	queue_redraw()
+
+
+func _on_mouse_exited() -> void:
+	if not is_hovered:
+		return
+	is_hovered = false
+	queue_redraw()
+
+# Godot bu fonksiyonu, hücre her "yeniden çizilmesi gerekiyor" işaretlendiğinde otomatik çağırır
 func _draw() -> void:
 	var size = get_rect().size
 	# Boş hücreler yarı saydam: arkadaki orman fonu hafifçe görünsün.
@@ -71,6 +92,11 @@ func _draw() -> void:
 	if is_invalid:
 		border_color = Color("#FF5C7A")   # Çürüme kızılı — sığmıyor
 		border_width = 2.5
+	elif is_hovered:
+		# Satın alınabilir kartın üzerindeyiz: tahtadaki seçili hedefle aynı
+		# eter sarısı, çünkü ikisi de "buraya tıkla" demek
+		border_color = Color("#FBE6B8")
+		border_width = 4.0
 	elif is_target:
 		# Çekiliş paneli açıkken tile'ın nereye geleceği unutulmasın diye
 		# seçili hücre kalın eter sarısı çerçeveyle işaretlenir
@@ -271,12 +297,18 @@ func set_preview(tile_edges: Dictionary, tile_creature: int = -1) -> void:   # Y
 	queue_redraw()
 
 
-# Statik bir önizleme gösterir (draft panelindeki kartlar gibi) — tıklanamaz, sadece görsel
-func set_static(tile_edges: Dictionary, tile_creature: int, invalid: bool = false) -> void:
+# Statik bir önizleme gösterir (çekiliş panelindeki kartlar gibi).
+# buyable true ise kartın kendisi satın alma düğmesidir: tıklanınca `clicked`
+# yayınlar, üzerine gelince çerçevesi vurgulanır ve imleç el olur.
+func set_static(tile_edges: Dictionary, tile_creature: int, invalid: bool = false,
+		buyable: bool = false) -> void:
 	is_filled = true
 	edges = tile_edges
 	creature = tile_creature
-	is_selectable = false
+	is_selectable = buyable
+	is_buyable = buyable
 	is_preview = false
 	is_invalid = invalid
+	is_hovered = false
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if buyable else Control.CURSOR_ARROW
 	queue_redraw()

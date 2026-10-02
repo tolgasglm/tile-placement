@@ -5,7 +5,7 @@ extends RefCounted         # Sahneye bağlı olmayan, saf mantık sınıfı
 # her satırın toplamı 100). Ağırlıklar SABİT DEĞİL, tile'ın konacağı hücrenin
 # SATIRINA bağlı: dizinin index'i satır numarasıdır (0 = en üst/kazanma satırı,
 # 7 = en alt/başlangıç satırı).
-#
+#6
 # Yukarı çıkıldıkça Eter azalır (%30 -> %9), Boşluk artar (%10 -> %31); dört
 # gerçek elementin payı her satırda sabittir (%15 x 4 = %60). Böylece tahtanın
 # üst yarısında hem joker kenar bulmak zorlaşır hem de yolu tıkayan boşluk

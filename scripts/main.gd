@@ -12,18 +12,26 @@ const VOLUME_BOOK := 0.0
 
 var tutorial: TutorialManager
 var relic_panel: RelicPanel
+var nav_buttons: GameNavButtons
 
 
 func _ready() -> void:
+	# Arayüz teması (yazı tipleri + düğme görünümü) motorun varsayılan temasına
+	# yazılır; ayrı CanvasLayer'lardaki menü, öğretici, kalıntı ve ilerleme
+	# ekranlarına da bu yolla ulaşır. Nedeni için bkz. UiTheme.apply_ui_theme.
+	UiTheme.apply_ui_theme()
+
 	# Orman atmosferini (yükselen ruh zerrecikleri) en önce ekliyoruz ki
 	# Root ve MoneyLabel gibi diğer tüm UI katmanları onun üzerinde çizilsin
 	var atmosphere = ForestAtmosphere.new()
 	add_child(atmosphere)
 	move_child(atmosphere, 0)
 
-	# Yaratık referansı her zaman açılabilir; öğreticinin kilidinden etkilenmemesi
-	# için kendi (daha yüksek) CanvasLayer'ında durur.
-	add_child(CreatureRefPanel.new())
+	# Oyun sırasında hep görünen "Ana Menü" / "Yeniden Başla" düğmeleri (Esc / R);
+	# sağ sütunun üst şeridine hizalanır.
+	nav_buttons = GameNavButtons.new()
+	nav_buttons.column_anchor = get_node("%DraftPanel").get_parent()
+	add_child(nav_buttons)
 
 	# Kalıntı seçim ekranı + sol alttaki kalıntı listesi. board_view çalışma
 	# anında yaratılan bu düğümü %isim ile bulamaz, referansını buradan veriyoruz.
@@ -50,6 +58,8 @@ func _ready() -> void:
 
 	tutorial = TutorialManager.new()
 	add_child(tutorial)
+	nav_buttons.relic_panel = relic_panel
+	nav_buttons.tutorial = tutorial
 
 	# "Yeniden Başla" sahneyi baştan yükler ve menüyü atlar; diğer her açılışta
 	# önce menü gelir.
@@ -64,6 +74,7 @@ func _show_menu() -> void:
 	menu.play_requested.connect(_start_game.bind(false))
 	menu.tutorial_requested.connect(_start_game.bind(true))
 	add_child(menu)
+	nav_buttons.menu = menu
 
 
 # with_tutorial: menüdeki "Nasıl Oynanır" yolu. Kapalıyken de öğretici ilk kez

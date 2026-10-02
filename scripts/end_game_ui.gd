@@ -1,8 +1,5 @@
 extends PanelContainer
 
-const SOUND_RESTART: AudioStream = preload("res://assets/voices/beginning.wav")
-const VOLUME_RESTART := -16.0
-
 var label: Label
 
 func _ready() -> void:
@@ -16,27 +13,13 @@ func _ready() -> void:
 
 	var restart_btn = Button.new()
 	restart_btn.text = "Yeniden Başla"
-	restart_btn.pressed.connect(_on_restart_pressed)
+	restart_btn.pressed.connect(GameNavButtons.restart)
 	vbox.add_child(restart_btn)
 
 	var menu_btn = Button.new()
 	menu_btn.text = "Ana Menü"
-	menu_btn.pressed.connect(_on_menu_pressed)
+	menu_btn.pressed.connect(GameNavButtons.go_to_menu)
 	vbox.add_child(menu_btn)
-
-func _on_restart_pressed() -> void:
-	# Ses sahneden bağımsız autoload'dan çalınır, yoksa sahne yeniden
-	# yüklenirken oynatıcı silinip ses kesilirdi
-	MusicManager.play_oneshot(SOUND_RESTART, VOLUME_RESTART)
-	# Menü ayrı bir sahne değil, aynı sahnenin bir katmanı: yeniden yüklerken
-	# doğrudan oyuna dönmek için atlanmasını söylüyoruz
-	MenuOverlay.skip_next = true
-	get_tree().reload_current_scene()
-
-# Sahneyi aynı şekilde baştan yükler, farkı menünün atlanmaması
-func _on_menu_pressed() -> void:
-	MenuOverlay.skip_next = false
-	get_tree().reload_current_scene()
 
 func show_win() -> void:
 	label.text = "🏆 KAZANDIN!\nEn üst-orta hücreye ulaştın."

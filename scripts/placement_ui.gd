@@ -64,6 +64,7 @@ func _make_arrow_button(icon: Texture2D) -> Button:
 	btn.icon = icon
 	btn.expand_icon = true   # görsel düğme boyutuna sığdırılır
 	btn.flat = true
+	btn.theme_type_variation = UiTheme.BUTTON_ICON_VARIATION   # hap zemini ve payı yok
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.custom_minimum_size = Vector2(ARROW_SIZE, ARROW_SIZE)
 	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
