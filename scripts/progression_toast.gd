@@ -11,6 +11,9 @@ extends CanvasLayer
 # kalanlar yukarı kayar.
 
 const LAYER := 22          # kalıntı modalinin (15) ve yaratık referansının (20) üstünde
+# Bildirim zemininin karartması: panellerden koyu, çünkü üstünde durduğu tahta
+# desenli ve bildirim yalnızca birkaç saniye görünüyor.
+const TOAST_DIM := Color(0.055, 0.063, 0.125, 0.94)
 const MARGIN := 18.0       # ekranın üstünden boşluk
 const REWARD_SOUL_SIZE := 44.0
 const HOLD_TIME := 3.6     # tam görünür kaldığı süre
@@ -40,6 +43,12 @@ func show_unlock(def: Dictionary) -> void:
 	panel.add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_LOG, 26, 16))
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stack.add_child(panel)
+
+	# Çerçeve dokusunun içi boş; bildirim tahtanın üstünde belirdiği için yazı
+	# altındaki tile'lara karışıyordu. İçeriğin ALTINA opak zemin (bkz.
+	# UiTheme.art_backdrop) — kısa süre görünen bir bildirim olduğu için
+	# panellerden daha da koyu.
+	panel.add_child(UiTheme.art_backdrop(TOAST_DIM))
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)

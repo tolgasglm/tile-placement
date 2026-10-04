@@ -90,6 +90,13 @@ var pending_creature: int = -1
 var is_pending_placement: bool = false
 var is_drafting: bool = false   # "+" tıklandığı andan itibaren tile tahtaya oturana kadar true
 
+# Klavye imleci: üzerinde durulan hücre [satır, sütun] ya da boş. Yalnızca yön
+# tuşlarına basılınca doğar; fareyle oynayan oyuncu hiç görmez.
+var key_cursor: Array = []
+# Öğretici çalışırken klavye kapalı: öğretici adımları oyuncunun belirli bir
+# ögeye TIKLAMASINI bekliyor, kısayol o kilidi delerdi. main.gd dolduruyor.
+var tutorial = null
+
 # Döndürme animasyonu: tile gerçekten dönerken tahta yeniden çizilmez, animasyon
 # bitince yeni açı uygulanıp normal render'a dönülür.
 const ROTATE_ANIM_DURATION := 0.22
@@ -220,10 +227,139 @@ func _render_board() -> void:
 					else:
 						cell_node.set_empty_blocked()
 
+			if key_cursor.size() == 2 and key_cursor[0] == r and key_cursor[1] == c:
+				cell_node.is_key_focus = true
 			add_child(cell_node)
 			cell_nodes[str(r) + "," + str(c)] = cell_node
 			if cell_node.is_target:
 				_start_target_pulse(cell_node)   # tween ancak node ağaçtayken kurulabilir
+
+	_update_flame_marks()
+
+# --- Klavye kontrolleri -----------------------------------------------------
+#
+# Üç ayrı aşama, üç ayrı anlam:
+#   boş hücre seçimi  : yön tuşları imleci taşır, Space seçer
+#   çekiliş           : A/S/D (veya sol/aşağı/sağ) kartı satın alır, F/yukarı 4.
+#   döndürme          : A/D (veya sol/sağ) çevirir, Space onaylar
+# Esc ve R game_nav_ui.gd'de; burada o tuşlara dokunulmuyor.
+const KEY_CARD_SLOTS := {
+	KEY_A: 0, KEY_LEFT: 0,
+	KEY_S: 1, KEY_DOWN: 1,
+	KEY_D: 2, KEY_RIGHT: 2,
+	KEY_F: 3, KEY_UP: 3,       # 4. kart yalnızca Zaman Kumu kalıntısıyla var
+}
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	if game_over or _keyboard_blocked():
+		return
+	var key = (event as InputEventKey).keycode
+
+	if is_pending_placement:
+		match key:
+			KEY_A, KEY_LEFT:
+				get_viewport().set_input_as_handled()
+				_on_rotate_requested(-1)
+			KEY_D, KEY_RIGHT:
+				get_viewport().set_input_as_handled()
+				_on_rotate_requested(1)
+			KEY_SPACE:
+				get_viewport().set_input_as_handled()
+				_on_confirm_placement()
+		return
+
+	if is_drafting and draft_panel.visible:
+		if KEY_CARD_SLOTS.has(key) and draft_panel.select_card(KEY_CARD_SLOTS[key]):
+			get_viewport().set_input_as_handled()
+		return
+
+	# Kalan iki aşama da tahtada imleçle geziniyor: yaratık yerleştirme ve
+	# boş hücre seçimi. Aday hücreleri _cursor_candidates ayırt ediyor.
+	var step = _cursor_step(key)
+	if step != Vector2i.ZERO:
+		get_viewport().set_input_as_handled()
+		_move_cursor(step)
+	elif key == KEY_SPACE and key_cursor.size() == 2:
+		get_viewport().set_input_as_handled()
+		if placing_creature:
+			_on_creature_target_pressed(key_cursor[0], key_cursor[1])
+		else:
+			_on_cell_pressed(key_cursor[0], key_cursor[1])
+
+
+func _keyboard_blocked() -> bool:
+	if tutorial != null and is_instance_valid(tutorial) and tutorial.running:
+		return true
+	return relic_panel != null and relic_panel.backdrop.visible
+
+
+func _cursor_step(key: int) -> Vector2i:
+	match key:
+		KEY_W, KEY_UP: return Vector2i(-1, 0)
+		KEY_S, KEY_DOWN: return Vector2i(1, 0)
+		KEY_A, KEY_LEFT: return Vector2i(0, -1)
+		KEY_D, KEY_RIGHT: return Vector2i(0, 1)
+	return Vector2i.ZERO
+
+
+# Şu an tıklanabilir olan hücreler. Render'daki kurallarla aynı kaynaktan
+# türetiliyor ki klavye fareden farklı bir şeye izin vermesin.
+func _cursor_candidates() -> Array:
+	var cells = []
+	if placing_creature:
+		for r in range(Board.ROWS):
+			for c in range(Board.COLS):
+				var cell = board.grid[r][c]
+				if cell != null and cell.placed_creature == -1:
+					cells.append([r, c])
+	elif not is_drafting and not is_pending_placement:
+		cells = board.get_expandable_cells()
+	return cells
+
+
+# İmleci verilen yönde en uygun adaya taşır. Önce o yöndeki hücreler arasından
+# en yakını seçilir; imleç yoksa ya da aday kalmadıysa listenin başına oturur.
+func _move_cursor(step: Vector2i) -> void:
+	var candidates = _cursor_candidates()
+	if candidates.is_empty():
+		key_cursor = []
+		_render_board()
+		return
+	if key_cursor.size() != 2 or not _contains_cell(candidates, key_cursor):
+		key_cursor = candidates[0]
+		_render_board()
+		return
+
+	var best = []
+	var best_score = INF
+	for cell in candidates:
+		var dr = cell[0] - key_cursor[0]
+		var dc = cell[1] - key_cursor[1]
+		# Yalnızca istenen yöndekiler: yön vektörüyle aynı işaretli olmalı
+		if step.x != 0 and sign(dr) != step.x:
+			continue
+		if step.y != 0 and sign(dc) != step.y:
+			continue
+		# Yönde ilerleme ağır basar, yanal sapma hafif cezalandırılır
+		var along = absf(dr * step.x + dc * step.y)
+		var aside = absf(dr * step.y + dc * step.x)
+		var score = along * 10.0 + aside
+		if score < best_score:
+			best_score = score
+			best = cell
+	if not best.is_empty():
+		key_cursor = best
+		_render_board()
+
+
+func _contains_cell(cells: Array, target: Array) -> bool:
+	for cell in cells:
+		if cell[0] == target[0] and cell[1] == target[1]:
+			return true
+	return false
+
 
 # --- Öğreticinin tahtayı ekranda bulması için yardımcılar --------------------
 
@@ -402,6 +538,8 @@ func _on_refresh_selected() -> void:
 # siler. Sahnedeki %SfxPlayer düğümü bunlara ebeveynlik eder — bu node
 # _render_board()'un temizlediği grid'in dışında olduğu için sesler kesilmez.
 func _play_sfx(stream: AudioStream, volume_db: float) -> void:
+	if not GameSettings.is_sfx_enabled():
+		return   # menüdeki "Sesler" anahtarı kapalı
 	var player = AudioStreamPlayer.new()
 	player.stream = stream
 	player.volume_db = volume_db
@@ -424,6 +562,92 @@ func _play_sfx_path(path: String, volume_db: float) -> void:
 # node'un global_position'ı o ana kadar (0,0)'dır, bu yüzden node'dan okumak
 # anahtarı tahtanın sol üst köşesinde doğurup oraya çakılı bırakıyordu.
 # GridContainer'ın kendi konumu ise sahne açıldığından beri sabit.
+# Bir hücrenin çevresinde kısa süreli alev çerçevesi. Salamander'ın simetri
+# kuralını görünür kılar: yeni Salamander'ın eşi (ya da eş bekleyen hücre).
+const FLAME_COLOR := Color("#FF7A6B")      # TileCell'deki Ateş rengi
+const FLAME_DURATION := 0.9
+
+func _flame_cell(row: int, col: int) -> void:
+	if row < 0 or row >= Board.ROWS or col < 0 or col >= Board.COLS:
+		return
+	var size = Vector2(board_cell_size, board_cell_size)
+	var frame := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.draw_center = false            # yalnızca kenar; hücrenin kendisi görünsün
+	style.border_color = FLAME_COLOR
+	style.set_border_width_all(4)
+	style.set_corner_radius_all(4)
+	frame.add_theme_stylebox_override("panel", style)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.size = size
+	frame.pivot_offset = size / 2        # büyüme merkezden olsun
+	frame.position = _cell_center(row, col) - size / 2
+	owner.add_child(frame)
+
+	var tween = frame.create_tween()
+	tween.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	# Önce parlayıp hafifçe büyür, sonra sönerek kendi boyutuna döner
+	tween.tween_property(frame, "modulate", Color(1.8, 1.4, 1.0, 1.0), FLAME_DURATION * 0.25)
+	tween.parallel().tween_property(frame, "scale", Vector2(1.12, 1.12), FLAME_DURATION * 0.25)
+	tween.tween_property(frame, "modulate", Color(1.0, 1.0, 1.0, 0.0), FLAME_DURATION * 0.75)
+	tween.parallel().tween_property(frame, "scale", Vector2.ONE, FLAME_DURATION * 0.75)
+	tween.finished.connect(frame.queue_free)
+
+
+# Eşini bekleyen Salamander'ın simetrik hücresi: oraya bir tile konana kadar
+# sönmeyen, nabız gibi atan bir alev çerçevesi. Hücre düğümünün üstünde
+# yaşayamaz (_render_board hepsini yok ediyor), bu yüzden kök düğüme eklenen
+# kalıcı bir Panel; konumu ve ömrü _update_flame_marks'ta güncelleniyor.
+var flame_marks: Dictionary = {}   # "satır,sütun" -> Panel
+
+func _mark_flame(row: int, col: int) -> void:
+	if row < 0 or row >= Board.ROWS or col < 0 or col >= Board.COLS:
+		return
+	if board.grid[row][col] != null:
+		return   # zaten dolu, beklenecek bir şey yok
+	var key = str(row) + "," + str(col)
+	if flame_marks.has(key):
+		return
+	var size = Vector2(board_cell_size, board_cell_size)
+	var frame := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.draw_center = false
+	style.border_color = FLAME_COLOR
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(4)
+	frame.add_theme_stylebox_override("panel", style)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.size = size
+	frame.pivot_offset = size / 2
+	frame.position = _cell_center(row, col) - size / 2
+	owner.add_child(frame)
+	flame_marks[key] = frame
+
+	# Sürekli nabız: sönmeden, dikkat çekmeyi de bırakmadan
+	var tween = frame.create_tween().set_loops()
+	tween.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(frame, "modulate", Color(1.6, 1.25, 1.0, 1.0), 0.7)
+	tween.tween_property(frame, "modulate", Color(1.0, 1.0, 1.0, 0.75), 0.7)
+
+
+# Her çizimde çağrılır: dolan hücrelerin alevini söndürür, kalanları tahtanın
+# güncel yerleşimine göre yeniden konumlandırır.
+func _update_flame_marks() -> void:
+	for key in flame_marks.keys():
+		var frame = flame_marks[key]
+		if not is_instance_valid(frame):
+			flame_marks.erase(key)
+			continue
+		var parts = key.split(",")
+		var r = int(parts[0])
+		var c = int(parts[1])
+		if board.grid[r][c] != null:
+			frame.queue_free()
+			flame_marks.erase(key)
+		else:
+			frame.position = _cell_center(r, c) - frame.size / 2
+
+
 func _cell_center(row: int, col: int) -> Vector2:
 	var step = Vector2(
 		board_cell_size + get_theme_constant("h_separation"),
@@ -489,11 +713,12 @@ func _advance_lock() -> void:
 	# ve çekiliş ancak bu bittikten SONRA gelir — yoksa açılış animasyonu relic
 	# seçim ekranının arkasında kalır ve oyuncuya kilit "aniden yok oldu" gibi
 	# görünür.
-	if opened and lock_visible:
+	# Kilit açıldıysa, relic ekranı açılmadan önce açılış görülsün diye kısa bir
+	# süre beklenir. Kilit ARTIK KAYBOLMUYOR: açık hâli, hücre doldurulana kadar
+	# yerinde durur (_render_board zaten yalnızca boş hücreye çiziyor). Eskiden
+	# gizleniyordu ve kazanma hücresi bomboş kalıyordu — ne kilit, ne "+".
+	if opened:
 		await get_tree().create_timer(LOCK_OPEN_LINGER).timeout
-		lock_visible = false
-		if not is_rotating:
-			_render_board()
 
 	_on_key_collected(displayed_keys)
 
@@ -616,6 +841,16 @@ func _on_creature_target_pressed(row: int, col: int) -> void:
 	var placed_type = pending_creature
 	_play_sfx(CREATURE_SOUNDS[placed_type], CREATURE_VOLUMES[placed_type])
 	var payment = scorer.score_placement(board, row, col, placed_type)
+	# Salamander simetriyle çalışır: eşini (ya da eşin gelmesi gereken hücreyi)
+	# kısa bir alevle işaretliyoruz. Efekt tahtanın DIŞINDA, kök düğüme eklenen
+	# geçici bir düğümde yaşıyor (anahtar uçuşuyla aynı tarif) — _render_board
+	# her yerleştirmede hücreleri yok ettiği için hücrenin üstünde yaşayamaz.
+	if not scorer.last_salamander_flame.is_empty():
+		_flame_cell(scorer.last_salamander_flame[0], scorer.last_salamander_flame[1])
+		scorer.last_salamander_flame = []
+	if not scorer.last_salamander_mark.is_empty():
+		_mark_flame(scorer.last_salamander_mark[0], scorer.last_salamander_mark[1])
+		scorer.last_salamander_mark = []
 	economy.gain(payment)
 	money_log_panel.log_gain(CREATURE_NAMES[placed_type], payment)
 	_flush_progression_unlocks()
@@ -688,6 +923,11 @@ func _on_relic_activated(relic_id: String) -> void:
 # başlangıç ruhunu artırır (bkz. Economy.start_money), o yüzden ruh günlüğüne
 # de yazılmaz.
 func _flush_progression_unlocks() -> void:
+	# Skor tablosu her yerleştirmeden sonra tazelenir: yalnızca açılan eşiğin
+	# rengi değil, "şu an buradayız" halkası da güncel değerlere göre taşınıyor.
+	var scoreboard = get_node_or_null("%ScoreboardPanel")
+	if scoreboard != null:
+		scoreboard.refresh_thresholds(scorer.best_values)
 	if scorer.new_unlocks.is_empty():
 		return
 	for def in scorer.new_unlocks:
@@ -695,11 +935,6 @@ func _flush_progression_unlocks() -> void:
 		if progression_toast != null:
 			progression_toast.show_unlock(def)
 	scorer.new_unlocks.clear()
-	# Skor tablosundaki eşik hücresi hemen altına dönsün — oyuncu neyi
-	# açtığını tabloda da görsün.
-	var scoreboard = get_node_or_null("%ScoreboardPanel")
-	if scoreboard != null:
-		scoreboard.refresh_thresholds()
 
 
 func _check_stuck_after_creature() -> void:

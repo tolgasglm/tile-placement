@@ -113,6 +113,7 @@ func _rebuild(money: int) -> void:
 		card.add_child(preview)
 		preview.set_static(pair["edges"], pair["creature"], not fits, buyable)
 		if buyable:
+			preview.set_meta("draft_index", i)   # klavyeden seçim için (select_card)
 			preview.clicked.connect(_on_buy_pressed.bind(i))
 			buy_cards.append(preview)
 
@@ -138,6 +139,22 @@ func _rebuild(money: int) -> void:
 	refresh_button.pressed.connect(func(): refresh_selected.emit())
 	refresh_row.add_child(refresh_button)
 	refresh_row.add_child(SoulAmount.create(refresh_cost, TITLE_SOUL_SIZE))
+
+# Klavyeden kart seçimi (board_view çağırır). Yalnızca ALINABİLİR kartlar
+# seçilebilir — fareyle de öyle, tıklanabilir olanlar buy_cards'ta.
+func select_card(index: int) -> bool:
+	if index < 0 or index >= current_draft.size():
+		return false
+	var preview = null
+	for card in buy_cards:
+		if is_instance_valid(card) and card.get_meta("draft_index", -1) == index:
+			preview = card
+			break
+	if preview == null:
+		return false
+	_on_buy_pressed(index)
+	return true
+
 
 func _on_buy_pressed(index: int) -> void:
 	pair_selected.emit(current_draft[index])

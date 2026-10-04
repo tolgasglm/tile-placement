@@ -117,7 +117,9 @@ func compute_price(edges: Dictionary) -> int:
 		if e == TileDef.Element.VOID:
 			void_count += 1
 
-	var difficulty_table = [0, 1, 2, 4, 6]   # index = ether_count (0'dan 4'e)
+	# index = ether_count (0'dan 4'e). Doğrusal: her eter kenarı +1 ekler, yani
+	# fiyat 3,4,5,6,7. Eskiden [0,1,2,4,6] idi ve dört eterli tile 9'a çıkıyordu.
+	var difficulty_table = [0, 1, 2, 3, 4]
 	var difficulty = difficulty_table[ether_count]
 
 	var void_discount = 0
@@ -164,6 +166,13 @@ func generate_draft(row: int) -> Array:
 	var pairs = []
 	for i in range(RelicManager.draft_size()):
 		pairs.append(generate_draft_pair(row))
+
+	# Ortak Kan: bütün seçenekler aynı yaratığı taşır. Yaratık seçimi burada bir
+	# kez yapılır, kenar/fiyat üretimi değişmez.
+	if RelicManager.draft_single_creature():
+		var shared = pick_random_creature()
+		for p in pairs:
+			p["creature"] = shared
 
 	if RelicManager.wants_dagon_guarantee() and not RelicManager.creature_forbidden(TileDef.Creature.DAGON):
 		var has_dagon = false

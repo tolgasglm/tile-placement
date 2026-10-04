@@ -16,6 +16,11 @@ var nav_buttons: GameNavButtons
 
 
 func _ready() -> void:
+	# Pencere başlığı. project.godot'taki config/name'e dokunmuyoruz: o ad aynı
+	# zamanda user:// klasörünün adını belirler, değiştirmek oyuncunun kayıtlı
+	# ilerlemesini ve ayarlarını "kayıp" gösterirdi.
+	get_window().title = "Ruhlar Ormanı"
+
 	# Arayüz teması (yazı tipleri + düğme görünümü) motorun varsayılan temasına
 	# yazılır; ayrı CanvasLayer'lardaki menü, öğretici, kalıntı ve ilerleme
 	# ekranlarına da bu yolla ulaşır. Nedeni için bkz. UiTheme.apply_ui_theme.
@@ -85,4 +90,7 @@ func _start_game(with_tutorial: bool) -> void:
 		TutorialManager.force_start = true
 	else:
 		MusicManager.play_oneshot(SOUND_START, VOLUME_START)
-	tutorial.setup(get_node("%GridContainer"), get_node("MoneyLabel"))
+	# board_view klavye kısayollarını öğretici çalışırken kapatıyor
+	get_node("%GridContainer").tutorial = tutorial
+	tutorial.setup(get_node("%GridContainer"), get_node("MoneyLabel"),
+		get_node("%ScoreboardPanel"))

@@ -19,15 +19,26 @@ const BONUS_SOUL_SIZE := 34.0  # alttaki kalıcı bonus satırının ikonu
 # sıkışık, desenli fonun üstünde doğrudan okunmuyorlardı.
 const GROUND_DIM := Color(0.078431, 0.086275, 0.168627, 0.84)
 
-# Kalıcı ilerleme eşiği olan hücrelerin rengi. Açılmışsa eter sarısı; henüz
-# açılmamışsa aynı sarının MAT ve KOYU hali — saydamlıkla soldurmuyoruz.
-const THRESHOLD_DONE_COLOR := Color("#FBE6B8")
+# Kalıcı ilerleme eşiği olan hücreler. YEŞİL yalnızca KAZANILMIŞ olanı
+# gösterir — yeşil "bu bende var" demek. Henüz kazanılmamış eşikler mat altın
+# kalır: hangi değerlerin kalıcı ruh kazandırdığı görünsün ama kazanılmışla
+# karışmasın. (Soldurma değil, mat ve opak bir ton.)
+const THRESHOLD_DONE_COLOR := Color("#6FE8A6")
 const THRESHOLD_TODO_COLOR := Color("#B49C68")
+
+# "Şu an buradayız" halkası: o yaratıkla bu koşuda ulaşılan en iyi değerin
+# hücresini çevreler.
+const CURRENT_RING_COLOR := Color("#FBE6B8")   # eter sarısı — eşik yeşillerinden ayrı
+const CURRENT_RING_WIDTH := 2
+
 
 # Eşik hücrelerinin etiketleri, id -> Label. Koşu sırasında bir eşik açılınca
 # board_view refresh_thresholds() çağırıp rengi günceller; tabloyu baştan
 # kurmaya gerek kalmaz.
 var _threshold_cells: Dictionary = {}
+# "yaratık,sütun" -> hücreyi saran PanelContainer. Halka bunun stylebox'ı.
+var _slots: Dictionary = {}
+var _ring_slot: PanelContainer   # halkanın şu an çizildiği hücre
 var _bonus_amount: SoulAmount
 
 func _ready() -> void:
@@ -93,6 +104,14 @@ func _ready() -> void:
 		grid.add_child(name_label)
 
 		for c in range(1, COLUMN_COUNT + 1):
+			# Her hücre bir PanelContainer'a sarılı: "şu an buradayız" halkası
+			# bunun stylebox'ı olarak çiziliyor. Boş stylebox'ın kenar payı
+			# olmadığı için tablonun ölçüleri değişmiyor.
+			var slot = PanelContainer.new()
+			slot.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+			slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			_slots["%d,%d" % [i, c]] = slot
+
 			var cell = Label.new()
 			var payout = _payout_at(i, c)
 			cell.text = str(payout) if payout > 0 else "-"
@@ -108,7 +127,8 @@ func _ready() -> void:
 				cell.tooltip_text = "%s — +%d kalıcı başlangıç ruhu. %s" % [
 					def["title"], def["reward"], def["requirement"]]
 				_threshold_cells[def["id"]] = cell
-			grid.add_child(cell)
+			slot.add_child(cell)
+			grid.add_child(slot)
 
 	_build_bonus_row(vbox)
 	refresh_thresholds()
@@ -116,7 +136,7 @@ func _ready() -> void:
 
 # Eşik hücrelerinin rengini kalıcı ilerlemeye göre tazeler. Koşu sırasında bir
 # eşik açılınca board_view burayı çağırır, tablo yeniden kurulmaz.
-func refresh_thresholds() -> void:
+func refresh_thresholds(best_values: Dictionary = {}) -> void:
 	for id in _threshold_cells:
 		var cell: Label = _threshold_cells[id]
 		if not is_instance_valid(cell):
@@ -125,6 +145,35 @@ func refresh_thresholds() -> void:
 			THRESHOLD_DONE_COLOR if Progression.is_unlocked(id) else THRESHOLD_TODO_COLOR)
 	if _bonus_amount != null:
 		_bonus_amount.set_amount(Economy.start_money())
+	_move_current_ring(best_values)
+
+
+# Halkayı, her yaratığın bu koşuda ulaştığı en iyi değerin hücresine taşır.
+# Tek halka değil, yaratık başına bir tane: tablo beş ayrı başarıyı gösteriyor.
+func _move_current_ring(best_values: Dictionary) -> void:
+	for key in _slots:
+		var slot: PanelContainer = _slots[key]
+		if is_instance_valid(slot):
+			slot.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	for creature in best_values:
+		var value: int = best_values[creature]
+		if value < 1 or value > COLUMN_COUNT:
+			continue
+		var slot = _slots.get("%d,%d" % [creature, value])
+		if slot != null and is_instance_valid(slot):
+			slot.add_theme_stylebox_override("panel", _ring_stylebox())
+
+
+# İçi boş, yuvarlatılmış bir çerçeve. draw_center kapalı olduğu için yalnızca
+# kenar çiziliyor — altındaki zemin olduğu gibi kalıyor, saydamlık yok.
+func _ring_stylebox() -> StyleBoxFlat:
+	var ring := StyleBoxFlat.new()
+	ring.draw_center = false
+	ring.border_color = CURRENT_RING_COLOR
+	ring.set_border_width_all(CURRENT_RING_WIDTH)
+	ring.set_corner_radius_all(12)
+	ring.set_content_margin_all(0)
+	return ring
 
 
 # Tablonun altındaki özet: şu anki başlangıç ruhu ve altın değerlerin ne
@@ -146,12 +195,23 @@ func _build_bonus_row(vbox: VBoxContainer) -> void:
 	row.add_child(caption)
 
 	var note := Label.new()
-	note.text = "Altın değerler kalıcı başlangıç ruhu kazandırır."
+	note.text = "Altın değerler kalıcı ruh kazandırır, yeşiller kazanıldı."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	note.add_theme_font_size_override("font_size", 13)
 	note.add_theme_color_override("font_color", Color("#A8A0C8"))
 	vbox.add_child(note)
+
+
+# Sayacı tavana gelince başa dönen yaratıkların tavanı. O basamaktan sonrası
+# tabloda boş bırakılır ("-"): sayaç yeniden 1'den başladığı için 7. çift diye
+# bir basamak yok. Tek kaynak CreatureScorer, tablo oradan okuyor.
+func _cap_for(creature: int) -> int:
+	match creature:
+		TileDef.Creature.SALAMANDER: return CreatureScorer.SALAMANDER_MAX_PAIRS
+		TileDef.Creature.ROC: return CreatureScorer.ROC_MAX_GROUP
+	return 0   # tavanı yok
+
 
 
 # (yaratık, değer) için kalıcı ilerleme eşiği; yoksa boş sözlük.
@@ -168,9 +228,9 @@ func _threshold_for(creature: int, value: int) -> Dictionary:
 func _payout_at(creature: int, c: int) -> int:
 	match creature:
 		TileDef.Creature.SALAMANDER:
-			return 4 + (c - 1) * 2
+			return 3 + (c - 1) * 2 if c <= _cap_for(creature) else 0
 		TileDef.Creature.ROC:
-			return c if c >= 2 else 0
+			return c if c >= 2 and c <= _cap_for(creature) else 0
 		TileDef.Creature.GOLEM:
 			return c
 		TileDef.Creature.ABZU:

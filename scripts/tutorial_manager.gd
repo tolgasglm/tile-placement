@@ -35,7 +35,7 @@ const BOX_WIDTH_MARGIN := 40.0
 # sağ üst köşesinin önüne biner, fakat o adımın vurguladığı hücrelerin hiçbiri
 # orada değildir: kazanma hücresi orta sütunda, anahtarlar ise kutunun altında
 # kalan 3. ve 4. satırlardadır.
-enum Step { SELECT_CELL, MATCH, BUY, ROTATE, CONFIRM, CREATURES, CREATURE, MONEY, GOAL }
+enum Step { SELECT_CELL, MATCH, BUY, ROTATE, CONFIRM, CREATURES, CREATURE, MONEY, SCOREBOARD, GOAL }
 
 # Her adım: başlıkta görünen kısa ad, talimat metni ve (varsa) oyuncunun
 # ilerlemek için basacağı düğmenin yazısı. "action" boşsa adım bir oyun
@@ -43,7 +43,7 @@ enum Step { SELECT_CELL, MATCH, BUY, ROTATE, CONFIRM, CREATURES, CREATURE, MONEY
 # seçer (bkz. _build_element_block / _build_creature_block); boşsa blok yoktur.
 const STEPS = [
 	{"label": "Hücre seç",
-		"text": "Tahtada genişleyebileceğin hücreler + işaretiyle gösterilir. Birine tıkla.",
+		"text": "Tahtada genişleyebileceğin hücreler + işaretiyle gösterilir. Hangisini seçeceğin sana kalmış — tahtayı nereye doğru büyüteceğini sen belirlersin. Birine tıkla.",
 		"action": "", "extra": ""},
 	{"label": "Kenar eşleşmesi",
 		"text": "Bir tile ancak DÖRT kenarı da dokunduğu komşularla uyuşursa yerleşir. Boş hücreye ya da tahtanın dışına bakan kenar serbesttir. Çekilişte sığmayan seçenekler kırmızı çerçeveyle işaretlenir.",
@@ -61,10 +61,13 @@ const STEPS = [
 		"text": "Aldığın her tile bir yaratık getirir. Yaratık, yerleştirildiği anda kendi kuralına göre ruh öder:",
 		"action": "Devam", "extra": "creatures"},
 	{"label": "Yaratığı yerleştir",
-		"text": "Şimdi yaratığı yerleştir. Altın çerçeveli tile'lardan birine tıkla.",
+		"text": "Şimdi yaratığı yerleştir. Altın çerçeveli tile'lardan HERHANGİ birine koyabilirsin — hangisini seçtiğin ne kadar ödeyeceğini değiştirir, çünkü her yaratık çevresindeki düzene göre öder.",
 		"action": "", "extra": ""},
 	{"label": "Ruh sayacı",
-		"text": "Ruhunu sağ üstteki damlanın içinde görebilirsin. Yaratıklarla ulaştığın başarılar sonraki oyunların başlangıç ruhunu kalıcı olarak artırır; ana menüdeki İlerleme ekranından takip edebilirsin.",
+		"text": "Ruhunu sağ üstteki damlanın içinde görebilirsin.",
+		"action": "Devam", "extra": ""},
+	{"label": "Skor tablosu",
+		"text": "Sol alttaki Skor Tablosu her yaratığın hangi başarıda kaç ruh ödediğini gösterir; altın halka o yaratıkla şu an nerede olduğunu işaretler. Altın değerler ise kalıcı: bir koşuda ilk kez yakaladığında sonraki bütün oyunların başlangıç ruhu kalıcı olarak artar — kazandıkların yeşile döner.",
 		"action": "Devam", "extra": ""},
 	{"label": "Hedef",
 		"text": "Tahtadaki anahtarları topla ve en üste ulaş. Ruhun biterse kaybedersin.",
@@ -101,6 +104,7 @@ const BOX_BACKDROP_INSET := 6.0
 
 var board_view                  # scenes/board_view.gd — oyunun orkestratörü
 var money_label: Control        # sağ üstteki ruh/para sayacı
+var scoreboard_panel: Control   # sol alttaki skor tablosu (SCOREBOARD adımı onu gösterir)
 var draft_panel
 var placement_panel
 
@@ -129,9 +133,10 @@ var wrap_labels: Array[Label] = []
 
 # main.gd, sahnedeki düğümleri çözebilen tek yer olduğu için referansları o
 # veriyor (çalışma anında yaratılan bu düğümde %UniqueName araması çalışmaz).
-func setup(view, money_display: Control) -> void:
+func setup(view, money_display: Control, scoreboard: Control = null) -> void:
 	board_view = view
 	money_label = money_display
+	scoreboard_panel = scoreboard
 	draft_panel = board_view.draft_panel
 	placement_panel = board_view.placement_panel
 
@@ -345,6 +350,8 @@ func _target_nodes() -> Array:
 			return [placement_panel.confirm_btn] if placement_panel.visible else []
 		Step.MONEY:
 			return [money_label]
+		Step.SCOREBOARD:
+			return [scoreboard_panel] if scoreboard_panel != null else []
 		Step.GOAL:
 			return _goal_nodes()
 	return []
@@ -461,6 +468,8 @@ func _on_action_pressed() -> void:
 		Step.CREATURES:
 			_show_step(Step.CREATURE)
 		Step.MONEY:
+			_show_step(Step.SCOREBOARD)
+		Step.SCOREBOARD:
 			_show_step(Step.GOAL)
 		Step.GOAL:
 			_finish_to_menu()

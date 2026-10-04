@@ -120,8 +120,10 @@ func edges_compatible(neighbor_edge: TileDef.Element, my_edge: TileDef.Element) 
 	if neighbor_edge == TileDef.Element.ETHER or my_edge == TileDef.Element.ETHER:
 		return true
 
-	# 4. Buraya geldiysek ikisi de "gerçek" element (Ateş/Su/Toprak/Hava), birebir eşleşmeli
-	return neighbor_edge == my_edge
+	# 4. Buraya geldiysek ikisi de "gerçek" element (Ateş/Su/Toprak/Hava).
+	# Normalde birebir eşleşmeli; Zıt Kutuplar kalıntısı Ateş-Su ve Hava-Toprak
+	# çiftlerini de kabul ettirir (kuralın kendisi RelicManager'da).
+	return neighbor_edge == my_edge or RelicManager.opposites_match(neighbor_edge, my_edge)
 
 # Verilen (row,col) için bir komşu koordinatını hesaplar
 func _neighbor_coord(row: int, col: int, dir: String) -> Array:

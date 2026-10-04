@@ -96,6 +96,73 @@ func _build_menu() -> void:
 	vbox.add_child(_menu_button("İlerleme", _on_progress_pressed))
 	vbox.add_child(_menu_button("Çıkış", _on_quit_pressed))
 
+	# Ses anahtarları ana düğmelerin altında, yan yana ve küçük boyda: menüyü
+	# altı satırlık bir düğme duvarına çevirmesinler.
+	var audio_row := HBoxContainer.new()
+	audio_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	audio_row.add_theme_constant_override("separation", 10)
+	vbox.add_child(audio_row)
+	# Genişlik, olabilecek EN UZUN metne göre bir kez hesaplanıp ikisine de
+	# veriliyor: yoksa "Açık" <-> "Kapalı" geçişinde düğmeler büyüyüp küçülüyor.
+	var toggle_width := _toggle_width(["Müzik", "Sesler"])
+	audio_row.add_child(_audio_toggle("Müzik",
+		GameSettings.is_music_enabled, _on_music_toggled, toggle_width))
+	audio_row.add_child(_audio_toggle("Sesler",
+		GameSettings.is_sfx_enabled, _on_sfx_toggled, toggle_width))
+
+
+# Durumunu yazısında taşıyan aç/kapa düğmesi ("Müzik: Açık"). Ayrı bir onay
+# kutusu düğümü yerine düğme: temanın hap görünümü her yerde aynı kalsın.
+func _audio_toggle(label: String, getter: Callable, handler: Callable, width: float) -> Button:
+	var btn := Button.new()
+	btn.theme_type_variation = UiTheme.BUTTON_SMALL_VARIATION
+	btn.custom_minimum_size = Vector2(width, 0)
+	btn.add_theme_font_size_override("font_size", 15)
+	btn.set_meta("label", label)
+	btn.set_meta("getter", getter)
+	_refresh_toggle(btn)
+	btn.pressed.connect(func() -> void:
+		handler.call()
+		_refresh_toggle(btn))
+	return btn
+
+
+# Verilen etiketlerin "Açık"/"Kapalı" hâllerinden en genişini ölçüp düğme
+# payını ekler. Ölçüm temadan okunuyor, yani font ya da punto değişirse
+# genişlik kendiliğinden uyar; elle verilen sabit bir sayı uymazdı.
+const TOGGLE_STATES := ["Açık", "Kapalı"]
+
+func _toggle_width(labels: Array) -> float:
+	var probe := Button.new()
+	probe.theme_type_variation = UiTheme.BUTTON_SMALL_VARIATION
+	probe.add_theme_font_size_override("font_size", 15)
+	var font := probe.get_theme_font("font")
+	var font_size := probe.get_theme_font_size("font_size")
+	var style := probe.get_theme_stylebox("normal")
+	var widest := 0.0
+	for label in labels:
+		for state in TOGGLE_STATES:
+			var text := "%s: %s" % [label, state]
+			widest = maxf(widest, font.get_string_size(
+				text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	var padding := style.content_margin_left + style.content_margin_right
+	probe.free()
+	return ceilf(widest + padding)
+
+
+func _refresh_toggle(btn: Button) -> void:
+	var on: bool = (btn.get_meta("getter") as Callable).call()
+	btn.text = "%s: %s" % [btn.get_meta("label"), TOGGLE_STATES[0] if on else TOGGLE_STATES[1]]
+
+
+func _on_music_toggled() -> void:
+	GameSettings.set_music_enabled(not GameSettings.is_music_enabled())
+	MusicManager.apply_audio_settings()   # anında dursun/başlasın
+
+
+func _on_sfx_toggled() -> void:
+	GameSettings.set_sfx_enabled(not GameSettings.is_sfx_enabled())
+
 
 func _menu_button(text: String, handler: Callable) -> Button:
 	var btn = Button.new()

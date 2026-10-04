@@ -18,7 +18,7 @@ signal relics_changed()
 # listenin başına alınır, yani garanti sunulur. Belirli bir kalıntıyı denemek için
 # kullan; işin bitince BOŞALT ([]), yoksa çekiliş rastgeleliği bozuk kalır.
 # Geçerli id'ler _build_pool()'daki RelicDef.make("...") ilk argümanlarıdır.
-const DEBUG_FORCE_OFFER: Array[String] = ["cift_ruh","eter_dokusu","bosluk_deldirme"]
+const DEBUG_FORCE_OFFER: Array[String] = []
 
 # Sahip-olunan listede TIKLANABİLİR düğme olarak gösterilen tek kullanımlıklar
 # (board_view._on_relic_activated bunları ele alır). Ruh Pazarı da tek
@@ -67,6 +67,10 @@ func _build_pool() -> void:
 			"Abzu'nun köşegen komşuları 2 sayılır (en çok 8 yerine 12).", CRE),
 		RelicDef.make("golge_bagi", "Gölge Bağı",
 			"Dagon çapraz ödemesi çapraz başına 2 yerine 3 olur.", CRE),
+		RelicDef.make("golge_hatti", "Gölge Hattı",
+			"Dagon artık çaprazdaki değil, düz komşuluktaki (yatay/dikey) Dagon'lara göre öder.", CRE),
+		RelicDef.make("ortak_kan", "Ortak Kan",
+			"Ödeme yapan her yaratık +1 ruh fazla verir, ama çekilişteki tüm tile'lar aynı yaratığı taşır.", CRE),
 		# --- Ekonomi ---
 		RelicDef.make("tuccar_yuzugu", "Tüccar Yüzüğü",
 			"Tur başına 1 kez yenileme ücretsizdir.", ECO),
@@ -84,7 +88,7 @@ func _build_pool() -> void:
 		RelicDef.make("yaratik_sozlesmesi", "Yaratık Sözleşmesi",
 			"Seçilen bir yaratık türü bir daha çekilişte çıkmaz.", DRF, false, "creature"),
 		RelicDef.make("element_sozlesmesi", "Element Sözleşmesi",
-			"Seçilen bir element bir daha tile kenarlarında çıkmaz.", DRF, false, "element"),
+			"Seçilen bir element bir daha karşına çıkmaz.", DRF, false, "element"),
 		RelicDef.make("karanlik_tohum", "Karanlık Tohum",
 			"Bir Dagon yerleştirdiğinde sıradaki çekilişte en az bir Dagon bulunur.", DRF),
 		RelicDef.make("kilik_tasi", "Kılık Taşı",
@@ -96,6 +100,8 @@ func _build_pool() -> void:
 			"Çapraz komşu hücrelere de yerleştirebilirsin; her çapraz yerleştirme +2 ruh maliyet.", PLC),
 		RelicDef.make("bosluk_deldirme", "Boşluk Deldirme",
 			"Boşluk kenarının baktığı yöne de genişleyebilirsin.", PLC),
+		RelicDef.make("zit_kutuplar", "Zıt Kutuplar",
+			"Ateş ile Su, Hava ile Toprak da birbirine uyar.", PLC),
 		RelicDef.make("cift_ruh", "Çift Ruh",
 			"Bir kez: etkinleştir, sıradaki yerleştirdiğin yaratığın aynı türden ikinci bir kopyasını da koyarsın.", PLC, true),
 		RelicDef.make("ayna_tahta", "Ayna Tahta",
@@ -206,6 +212,33 @@ func abzu_diagonal_weight() -> int:
 
 func dagon_per_diagonal() -> int:
 	return 3 if has_relic("golge_bagi") else 2
+
+
+# Gölge Hattı: Dagon'un eşleri çaprazda değil, düz komşulukta aranır.
+func dagon_counts_orthogonal() -> bool:
+	return has_relic("golge_hatti")
+
+
+# Ortak Kan: ödeme yapan yaratıklara eklenen ruh.
+func creature_payment_bonus() -> int:
+	return 1 if has_relic("ortak_kan") else 0
+
+
+# Ortak Kan'ın diğer yüzü: çekilişteki bütün tile'lar aynı yaratığı taşır.
+func draft_single_creature() -> bool:
+	return has_relic("ortak_kan")
+
+
+# Zıt Kutuplar: Ateş-Su ve Hava-Toprak çiftleri de uyumlu sayılır. Kenar
+# kuralının tamamı board.edges_compatible'da; orası yalnızca buraya sorar.
+func opposites_match(a: int, b: int) -> bool:
+	if not has_relic("zit_kutuplar"):
+		return false
+	var fire := TileDef.Element.FIRE
+	var water := TileDef.Element.WATER
+	var earth := TileDef.Element.EARTH
+	var air := TileDef.Element.AIR
+	return (a == fire and b == water) or (a == water and b == fire) 		or (a == air and b == earth) or (a == earth and b == air)
 
 
 # --- Etki sorguları: ekonomi ve fiyat ---------------------------------

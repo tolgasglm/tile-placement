@@ -35,17 +35,17 @@ const SECTION := "unlocked"
 #   Dagon      → yerleştirmede sayılan çapraz Dagon sayısı
 # title/achievement bildirimde, requirement ilerleme ekranında görünür.
 const THRESHOLDS := [
-	{"id": "salamander_3", "creature": TileDef.Creature.SALAMANDER, "value": 3, "reward": 1,
-		"title": "Alev İkizleri", "achievement": "3 simetrik çift!",
-		"requirement": "Bir koşuda 3 simetrik Salamander çifti tamamla"},
-	{"id": "salamander_5", "creature": TileDef.Creature.SALAMANDER, "value": 5, "reward": 1,
-		"title": "Salamander Ustası", "achievement": "5 simetrik çift!",
-		"requirement": "Bir koşuda 5 simetrik Salamander çifti tamamla"},
+	{"id": "salamander_4", "creature": TileDef.Creature.SALAMANDER, "value": 4, "reward": 1,
+		"title": "Alev İkizleri", "achievement": "4 simetrik çift!",
+		"requirement": "Üst üste 4 simetrik Salamander çifti tamamla"},
+	{"id": "salamander_6", "creature": TileDef.Creature.SALAMANDER, "value": 6, "reward": 1,
+		"title": "Salamander Ustası", "achievement": "6 simetrik çift!",
+		"requirement": "Üst üste 6 simetrik Salamander çifti tamamla"},
 
 	{"id": "roc_5", "creature": TileDef.Creature.ROC, "value": 5, "reward": 1,
 		"title": "Sürü Çağrısı", "achievement": "5'li Roç sürüsü!",
 		"requirement": "Tek bir sürüyü 5 Roç'a ulaştır"},
-	{"id": "roc_8", "creature": TileDef.Creature.ROC, "value": 8, "reward": 2,
+	{"id": "roc_8", "creature": TileDef.Creature.ROC, "value": 8, "reward": 1,
 		"title": "Gökyüzü Sürüsü", "achievement": "8'li Roç sürüsü!",
 		"requirement": "Tek bir sürüyü 8 Roç'a ulaştır"},
 
@@ -63,12 +63,12 @@ const THRESHOLDS := [
 		"title": "Abzu'nun Kucağı", "achievement": "8 komşulu Abzu!",
 		"requirement": "Bir Abzu'yu 8 dolu komşuya ulaştır"},
 
-	{"id": "dagon_2", "creature": TileDef.Creature.DAGON, "value": 2, "reward": 1,
-		"title": "Çapraz Gölge", "achievement": "2 çapraz Dagon!",
-		"requirement": "Bir Dagon'u 2 çapraz Dagon ile eşleştir"},
 	{"id": "dagon_3", "creature": TileDef.Creature.DAGON, "value": 3, "reward": 1,
-		"title": "Gölgeler Korosu", "achievement": "3 çapraz Dagon!",
+		"title": "Çapraz Gölge", "achievement": "3 çapraz Dagon!",
 		"requirement": "Bir Dagon'u 3 çapraz Dagon ile eşleştir"},
+	{"id": "dagon_4", "creature": TileDef.Creature.DAGON, "value": 4, "reward": 1,
+		"title": "Gölgeler Korosu", "achievement": "4 çapraz Dagon!",
+		"requirement": "Bir Dagon'u 4 çapraz Dagon ile eşleştir"},
 ]
 
 # id -> true. Yalnızca açılmış eşikler bulunur.

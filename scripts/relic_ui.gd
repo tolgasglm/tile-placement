@@ -179,7 +179,40 @@ func _make_clickable_frame(content_pad: float, action: Callable) -> PanelContain
 	frame.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed 				and event.button_index == MOUSE_BUTTON_LEFT:
 			action.call())
+	# Eylemi düğümün üstünde de saklıyoruz: klavyeyle seçim (bkz.
+	# _unhandled_input) aynı çağrıyı lambda'ya ulaşmadan yapabilsin.
+	frame.set_meta("action", action)
 	return frame
+
+
+# Modal açıkken klavyeyle seçim. Çekiliş paneliyle aynı tuş düzeni: soldan sağa
+# A/S/D/F/G ya da ok tuşları. Hem kalıntı kartları hem de sözleşme/kılık alt
+# seçicisi için çalışır, ikisi de _content_row'u dolduruyor.
+# board_view ve game_nav_ui bu ekran açıkken kendi kısayollarını zaten kapatıyor.
+const KEY_SLOTS := {
+	KEY_A: 0, KEY_LEFT: 0,
+	KEY_S: 1, KEY_DOWN: 1,
+	KEY_D: 2, KEY_RIGHT: 2,
+	KEY_F: 3, KEY_UP: 3,
+	KEY_G: 4,
+}
+
+func _unhandled_input(event: InputEvent) -> void:
+	if backdrop == null or not backdrop.visible:
+		return
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	var key = (event as InputEventKey).keycode
+	if not KEY_SLOTS.has(key):
+		return
+	var index: int = KEY_SLOTS[key]
+	if index >= _content_row.get_child_count():
+		return
+	var choice = _content_row.get_child(index)
+	if not choice.has_meta("action"):
+		return
+	get_viewport().set_input_as_handled()
+	(choice.get_meta("action") as Callable).call()
 
 
 func _on_relic_pick(relic_id: String) -> void:

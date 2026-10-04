@@ -15,6 +15,9 @@ var is_target: bool = false    # Çekiliş sürerken seçili olan boş hücre
 # türü bu, tahtanın kendi görsel dili değişmesin.
 var is_buyable: bool = false
 var is_hovered: bool = false
+# Klavyeyle gezinirken üzerinde durulan hücre. Fareyle oynarken hiç kullanılmaz,
+# bu yüzden tahtanın diğer durumlarından ayrı bir bayrak.
+var is_key_focus: bool = false
 var cell_size: float = 72.0    # YENİ: artık boyut dışarıdan ayarlanabilir (mini önizlemeler için)
 var has_key: bool = false      # Bu hücrede henüz toplanmamış bir anahtar var mı
 var lock_stage: int = -1       # Kazanma hücresinin kilit aşaması (0-4); -1 = kilit çizilmez
@@ -89,7 +92,10 @@ func _draw() -> void:
 
 	var border_color = Color("#2E2A4A")
 	var border_width = 1.0
-	if is_invalid:
+	if is_key_focus:
+		border_color = Color("#D6FBE8")   # Klavye imleci — parlak nane
+		border_width = 4.0
+	elif is_invalid:
 		border_color = Color("#FF5C7A")   # Çürüme kızılı — sığmıyor
 		border_width = 2.5
 	elif is_hovered:
@@ -210,19 +216,56 @@ func _draw_seam_band(size: Vector2, path: PackedVector2Array, centroid: Vector2,
 
 	var solid = Color.WHITE
 	var clear = Color(1, 1, 1, 0)
+	# Şerit dörtgen olarak DEĞİL, iki üçgen olarak çiziliyor. Dörtgenin dört
+	# noktası hücre karesine kırpıldığında iç ve dış kenar yer değiştirip papyon
+	# şekline girebiliyor; Godot kendi kendini kesen çokgeni üçgenleyemeyip her
+	# karede "Invalid polygon data" hatası basıyordu. Üçgen böyle bozulamaz.
+	# Kapladığı alan ve köşe renkleri aynı, görüntü değişmiyor.
 	for i in range(path.size() - 1):
-		var quad = PackedVector2Array([inner[i], inner[i + 1], outer[i + 1], outer[i]])
-		_draw_textured(quad, PackedColorArray([solid, solid, clear, clear]), size, element)
+		_draw_textured(PackedVector2Array([inner[i], inner[i + 1], outer[i + 1]]),
+			PackedColorArray([solid, solid, clear]), size, element)
+		_draw_textured(PackedVector2Array([inner[i], outer[i + 1], outer[i]]),
+			PackedColorArray([solid, clear, clear]), size, element)
 
 # UV'ler doğrudan hücre içindeki konumdan türetilir (uv = nokta / hücre boyutu),
 # böylece bölgenin dışına taşan geçiş bandında da doku sürekliliği korunur.
 func _draw_textured(points: PackedVector2Array, colors: PackedColorArray, size: Vector2, element: int) -> void:
 	if element == 5:   # BOŞLUK — hiçbir şey çizilmez, arka plan görünür kalır
 		return
+	# Bozuk (sıfır alanlı) çokgenleri çizmeye kalkma. _draw_seam_band şerit
+	# noktalarını hücre karesine kırpıyor; köşelerde şeridin iç ve dış kenarı
+	# aynı noktaya çökebiliyor ve geriye çizilecek bir yüzey kalmıyor. Godot
+	# bunu üçgenleyemeyip her karede "Invalid polygon data" hatası basıyordu.
+	# Çizilecek bir şey zaten olmadığı için atlamak görüntüyü değiştirmiyor.
+	if not _is_drawable_polygon(points):
+		return
 	var uvs = PackedVector2Array()
 	for p in points:
 		uvs.append(p / size)
 	draw_polygon(points, colors, uvs, ELEMENT_TEXTURES[element])
+
+
+# Çokgenin üçgenlenebilir olup olmadığı: üst üste binen ardışık noktalar
+# ayıklandıktan sonra en az üç ayrı nokta ve sıfırdan farklı bir alan kalmalı.
+const POLYGON_EPSILON := 0.01
+
+func _is_drawable_polygon(points: PackedVector2Array) -> bool:
+	var distinct = PackedVector2Array()
+	for p in points:
+		if distinct.is_empty() or distinct[distinct.size() - 1].distance_to(p) > POLYGON_EPSILON:
+			distinct.append(p)
+	# Kapanış noktası başlangıçla çakışıyorsa o da sayılmaz
+	if distinct.size() > 1 and distinct[0].distance_to(distinct[distinct.size() - 1]) <= POLYGON_EPSILON:
+		distinct.remove_at(distinct.size() - 1)
+	if distinct.size() < 3:
+		return false
+	# Ayakkabı bağı formülü: eş doğrusal noktalardan oluşan çokgenin alanı 0'dır
+	var area := 0.0
+	for i in range(distinct.size()):
+		var a = distinct[i]
+		var b = distinct[(i + 1) % distinct.size()]
+		area += a.x * b.y - b.x * a.y
+	return absf(area) * 0.5 > POLYGON_EPSILON
 
 func _draw_creature(size: Vector2) -> void:
 	var tex = UiTheme.CREATURE_ICONS[creature]
