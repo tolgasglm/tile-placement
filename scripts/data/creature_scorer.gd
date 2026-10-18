@@ -25,9 +25,19 @@ var best_values: Dictionary = {}
 # Salamander yerleştirildikten sonra board_view'in çizeceği iki ayrı işaret.
 # Veri katmanı sahneye dokunmaz, yalnızca hangi hücre olduğunu bildirir.
 #   flame : çift tamamlandı, EŞİN hücresi kısa süre parlasın (kutlama)
-#   mark  : eş yok, simetrik hücre oraya tile konana kadar KALICI alevlensin
+#   mark  : eş yok, aday hücreler KALICI alevlensin. Normalde tek hücre (aynı
+#           satırdaki ayna hücresi); İkiz Kor kalıntısıyla eş ayna sütununun
+#           HERHANGİ bir satırında olabildiği için o sütunun tamamı.
+# mark_owner: işareti doğuran Salamander'ın "satır,sütun" anahtarı. İkiz Kor
+#           işaretleri o Salamander eşleşince sönecek (board_view takip eder).
 var last_salamander_flame: Array = []
 var last_salamander_mark: Array = []
+var last_salamander_mark_owner: String = ""
+
+# Geriye dönük ödemelerin hücre dökümü: [[satır, sütun, miktar], ...].
+# board_view her birinden ayrı bir "yükselen ruh" çıkarır; toplam tek sayı
+# olsaydı ödemeyi doğuran yaratığın hangisi olduğu bilinemezdi.
+var last_extra_payments: Array = []
 
 # Kalıcı ilerleme eşiklerini yoklar. Ölçülen değerleri zaten bu sınıf
 # hesapladığı için kontrol de burada yapılıyor; açılan eşikler biriktirilip
@@ -39,6 +49,24 @@ func _check_progression(creature: int, value: int) -> void:
 	if value > best_values.get(creature, 0):
 		best_values[creature] = value
 	new_unlocks.append_array(Progression.check_threshold(creature, value))
+
+
+# Skor tablosundaki "şu an buradayız" halkası Salamander'da EN İYİ değeri değil
+# GÜNCEL zinciri göstermeli: zincir tavandan sonra başa döndüğünde (Kül
+# Altındaki Kor ile 3'e) halka da geri gelmeli. best_values normalde maksimumu
+# tuttuğu için bu değeri açıkça üzerine yazıyoruz.
+func _sync_salamander_display() -> void:
+	best_values[TileDef.Creature.SALAMANDER] = salamander_pair_count
+
+
+# Salamander çift sayacını bir basamak ilerletir. Tavana gelince başa döner;
+# dönülecek değer Kül Altındaki Kor kalıntısıyla 1 yerine 3 olur, yani zincir
+# en baştan değil üçüncü çiftten devam eder.
+func _advance_salamander_pair() -> void:
+	if salamander_pair_count >= SALAMANDER_MAX_PAIRS:
+		salamander_pair_count = RelicManager.salamander_reset_value()
+	else:
+		salamander_pair_count += 1
 
 
 # 1..limit aralığına sarmalar: limit+1 -> 1, limit+2 -> 2 ...
@@ -90,18 +118,24 @@ func _group_size(board: Board, row: int, col: int, creature: int) -> int:
 				stack.append([nr, nc])
 	return count
 
-func _nearest_same_creature_distance(board: Board, row: int, col: int, creature: int) -> int:
-	var min_dist = -1
+# Golem, EN UZAKTAKİ eşine göre öder ve ödeme aradaki SATIR (kademe) farkıdır:
+# 1. kademedeki bir Golem'in en uzak eşi 2. kademedeyse ödeme 1'dir. Sütun
+# farkı sayılmaz, yalnızca kaç kademe aşağı/yukarı olduğu önemli — aynı
+# satırdaki iki Golem birbirine hiçbir şey ödemez.
+# Tahta 8 satır olduğu için en büyük fark 7'dir.
+# -1 döner: tahtada başka Golem yok.
+func _farthest_same_creature_gap(board: Board, row: int, col: int, creature: int) -> int:
+	var found = false
+	var max_gap = 0
 	for r in range(board.ROWS):
 		for c in range(board.COLS):
 			if r == row and c == col:
 				continue
 			var cell = board.grid[r][c]
 			if cell != null and cell.placed_creature == creature:
-				var dist = abs(r - row) + abs(c - col)
-				if min_dist == -1 or dist < min_dist:
-					min_dist = dist
-	return min_dist
+				found = true
+				max_gap = maxi(max_gap, absi(r - row))
+	return max_gap if found else -1
 
 # Kalıcı ilerleme eşikleri için GERÇEK dolu komşu sayısı: kalıntı ağırlıkları
 # uygulanmaz. Derin Kaynak köşegenleri 2 saydığı için ödeme 12'ye kadar
@@ -130,7 +164,14 @@ func _filled_neighbor_count_8(board: Board, row: int, col: int) -> int:
 # düz (yatay/dikey) komşular. İki yerde kullanılıyor (yerleştirme ve geriye
 # dönük eşik yoklaması), bu yüzden mod seçimi tek noktada.
 func _dagon_partner_count(board: Board, row: int, col: int) -> int:
+	# İki kalıntı bu sayımı birbirinden bağımsız iki eksende değiştirir:
+	#   Gölge Hattı  -> YÖN kümesi: çapraz yerine düz komşuluk
+	#   Dört Bir Yan -> MENZİL: bitişik hücre yerine hattın tamamı (hedef yine
+	#                   yalnızca Dagon)
+	# İkisi birlikteyse düz hatlar taranır; her biri kendi ekseninde çalışır.
 	var offsets = [[-1, 0], [1, 0], [0, -1], [0, 1]] if RelicManager.dagon_counts_orthogonal() 		else [[-1, -1], [-1, 1], [1, -1], [1, 1]]
+	if RelicManager.dagon_scans_lines():
+		return _dagon_count_along_lines(board, row, col, offsets)
 	var count = 0
 	for offset in offsets:
 		var nr = row + offset[0]
@@ -140,6 +181,28 @@ func _dagon_partner_count(board: Board, row: int, col: int) -> int:
 		var cell = board.grid[nr][nc]
 		if cell != null and cell.placed_creature == TileDef.Creature.DAGON:
 			count += 1
+	return count
+
+
+# Dört Bir Yan: verilen yönlerde ilerleyip KESİNTİSİZ Dagon dizisini sayar.
+#
+# Kalıntı Dagon'un MENZİLİNİ açar (bitişik hücre yerine hat boyunca), hedefini
+# değiştirmez: yalnızca Dagon sayılır. Hat KESİNTİSİZ olmak zorunda — tarama
+# Dagon olmayan ilk hücrede (boş hücre, yaratıksız karo ya da başka türden bir
+# yaratık) o yönde durur. Boşlukları atlayan sürüm, aralarında hiç bağ olmayan
+# uzak Dagon'lara da ödeme veriyordu.
+func _dagon_count_along_lines(board: Board, row: int, col: int, offsets: Array) -> int:
+	var count = 0
+	for offset in offsets:
+		var nr = row + offset[0]
+		var nc = col + offset[1]
+		while nr >= 0 and nr < board.ROWS and nc >= 0 and nc < board.COLS:
+			var cell = board.grid[nr][nc]
+			if cell == null or cell.placed_creature != TileDef.Creature.DAGON:
+				break   # zincir koptu, bu yön burada biter
+			count += 1
+			nr += offset[0]
+			nc += offset[1]
 	return count
 
 
@@ -154,6 +217,25 @@ func _diagonal_creature_count(board: Board, row: int, col: int, creature: int) -
 		if cell != null and cell.placed_creature == creature:
 			count += 1
 	return count
+
+# Çifte Kavrulmuş için: verilen satırda, eksen DIŞINDAKİ bütün sütunlarda (5 sütunlu
+# tahtada 0, 1, 3, 4 — yani iki simetrik çift) Salamander var mı ve hiçbiri daha
+# önce sayılmış mı? Hepsi tamsa dört hücrenin anahtarını döndürür, değilse boş.
+func _salamander_row_quad(board: Board, row: int) -> Array:
+	var keys = []
+	var axis = board.COLS / 2
+	for c in range(board.COLS):
+		if c == axis:
+			continue   # orta sütun kendi kendine simetrik olamaz
+		var cell = board.grid[row][c]
+		if cell == null or cell.placed_creature != TileDef.Creature.SALAMANDER:
+			return []
+		var key = "%d,%d" % [row, c]
+		if paired_salamander_cells.has(key):
+			return []   # bu dörtlü zaten sayılmış
+		keys.append(key)
+	return keys
+
 
 # (row,col)'daki Salamander için henüz bir çifte girmemiş bir simetrik eş arar.
 # Döndürür: [eş_satır, eş_sütun, eş_hücre_anahtarı] ya da boş dizi. İkiz Kor
@@ -194,16 +276,44 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 		if partner.size() == 3:
 			last_salamander_flame = [partner[0], partner[1]]   # çift tamam: kısa parlama
 		else:
-			last_salamander_mark = [row, mirror_col]           # eş bekleniyor: kalıcı alev
-		if partner.size() == 3:
+			# Eş bekleniyor: aday hücreler kalıcı alevlensin. İkiz Kor varsa eş
+			# ayna sütununun her satırında olabilir, o yüzden sütunun tamamı.
+			last_salamander_mark_owner = "%d,%d" % [row, col]
+			if RelicManager.salamander_any_row():
+				last_salamander_mark = []
+				for r2 in range(board.ROWS):
+					last_salamander_mark.append([r2, mirror_col])
+			else:
+				last_salamander_mark = [[row, mirror_col]]
+		# Çifte Kavrulmuş: ödeme ikili çiftte değil, satırın DÖRT simetrik
+		# Salamander'ı tamamlandığında yapılır. Çift kurulsa bile ödeme yok.
+		if RelicManager.salamander_needs_quad():
+			var quad = _salamander_row_quad(board, row)
+			if quad.is_empty():
+				print("Salamander yerleşti, satırdaki dörtlü henüz tamam değil")
+			else:
+				for key in quad:
+					paired_salamander_cells[key] = true
+				# Dörtlü = İKİ çift: sayaç iki basamak birden ilerler ve ödeme
+				# varılan basamağınki olur (ör. 0 -> 2, yani 6), üstüne +5.
+				_advance_salamander_pair()
+				_advance_salamander_pair()
+				payment = 3 * salamander_pair_count + RelicManager.salamander_quad_bonus()
+				payment += RelicManager.salamander_pair_bonus()   # Alev Mührü
+				print("Salamander dörtlüsü (2 çift) #%d tamamlandı, ödeme: %d" % [
+					salamander_pair_count, payment])
+				_check_progression(creature, salamander_pair_count)
+				_sync_salamander_display()
+		elif partner.size() == 3:
 			paired_salamander_cells["%d,%d" % [row, col]] = true
 			paired_salamander_cells[partner[2]] = true
 			# 6'dan sonra başa döner: ...5, 6, 1, 2, ...
-			salamander_pair_count = salamander_pair_count % SALAMANDER_MAX_PAIRS + 1
-			payment = 3 + (salamander_pair_count - 1) * 2
+			_advance_salamander_pair()
+			payment = 3 * salamander_pair_count
 			payment += RelicManager.salamander_pair_bonus()   # Alev Mührü: her çifte +2
 			print("Salamander simetrik çift #%d tamamlandı, ödeme: %d" % [salamander_pair_count, payment])
 			_check_progression(creature, salamander_pair_count)
+			_sync_salamander_display()
 		else:
 			print("Salamander yerleşti, henüz simetrik eşi yok")
 
@@ -220,11 +330,11 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 			print("Roç yerleşti, sürü henüz sayılmıyor")
 
 	elif creature == TileDef.Creature.GOLEM:
-		var dist = _nearest_same_creature_distance(board, row, col, creature)
-		if dist != -1:
-			payment = dist
-			print("Golem, en yakın eşe %d birim mesafede, ödeme: %d" % [dist, payment])
-			_check_progression(creature, dist)
+		var gap = _farthest_same_creature_gap(board, row, col, creature)
+		if gap != -1:
+			payment = gap
+			print("Golem ile en uzak eşi arasında %d kademe var, ödeme: %d" % [gap, payment])
+			_check_progression(creature, gap)
 		else:
 			print("İlk Golem yerleşti, eş bekleniyor")
 
@@ -235,17 +345,14 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 		# Eşik ödemeye değil, gerçek komşu sayısına bakar (bkz. yukarıdaki not)
 		_check_progression(creature, _real_filled_neighbor_count_8(board, row, col))
 		if count > 0:
-			print("Abzu çevresinde %d dolu tile var, ödeme: %d" % [count, payment])
+			print("Abzu çevresinde %d dolu karo var, ödeme: %d" % [count, payment])
 		else:
 			print("Abzu yerleşti, çevresi henüz boş")
 
 	elif creature == TileDef.Creature.DAGON:
 		var diag = _dagon_partner_count(board, row, col)
+		cell.dagon_last_count = diag
 		_check_progression(creature, diag)
-		# Yeni Dagon, çaprazındaki ESKİ Dagon'ların da komşu sayısını artırır.
-		# Ödemeleri geriye dönük değişmez (yalnızca Abzu öyle çalışır), ama
-		# kalıcı para eşiği onların güncel sayısına da bakar.
-		_recheck_diagonal_dagons(board, row, col)
 		if diag > 0:
 			# Gölge Bağı: çapraz başına 2 yerine 3
 			payment = diag * RelicManager.dagon_per_diagonal()
@@ -259,18 +366,30 @@ func score_placement(board: Board, row: int, col: int, creature: int) -> int:
 		payment += RelicManager.creature_payment_bonus()
 	return payment
 
-# Çaprazdaki her Dagon için eşiği güncel sayısıyla yeniden yoklar. Ödeme
-# vermez — yalnızca kalıcı ilerleme içindir.
-func _recheck_diagonal_dagons(board: Board, row: int, col: int) -> void:
+# Yeni bir Dagon, komşuluğundaki ESKİ Dagon'ların da eş sayısını artırır.
+# Abzu'daki mantığın aynısı: her eski Dagon, artıştan doğan farkı GERİYE DÖNÜK
+# olarak öder, eşiği de güncel sayısıyla yeniden yoklanır. Toplam ek ödemeyi
+# döndürür; board_view onu oyuncuya ekler.
+func update_dagon_neighbors(board: Board, row: int, col: int) -> int:
 	var offsets = [[-1, 0], [1, 0], [0, -1], [0, 1]] if RelicManager.dagon_counts_orthogonal() 		else [[-1, -1], [-1, 1], [1, -1], [1, 1]]
+	var total_extra = 0
 	for offset in offsets:
 		var nr = row + offset[0]
 		var nc = col + offset[1]
 		if nr < 0 or nr >= board.ROWS or nc < 0 or nc >= board.COLS:
 			continue
 		var cell = board.grid[nr][nc]
-		if cell != null and cell.placed_creature == TileDef.Creature.DAGON:
-			_check_progression(TileDef.Creature.DAGON, _dagon_partner_count(board, nr, nc))
+		if cell == null or cell.placed_creature != TileDef.Creature.DAGON:
+			continue
+		var new_count = _dagon_partner_count(board, nr, nc)
+		_check_progression(TileDef.Creature.DAGON, new_count)
+		if new_count > cell.dagon_last_count:
+			var extra = (new_count - cell.dagon_last_count) * RelicManager.dagon_per_diagonal()
+			total_extra += extra
+			last_extra_payments.append([nr, nc, extra])
+			print("Dagon (satır %d, sütun %d) eş kazandı, ek ödeme: %d" % [nr, nc, extra])
+		cell.dagon_last_count = new_count
+	return total_extra
 
 
 func update_abzu_neighbors(board: Board, row: int, col: int) -> int:
@@ -287,6 +406,7 @@ func update_abzu_neighbors(board: Board, row: int, col: int) -> int:
 				cell.abzu_last_count = new_count
 				var extra = new_count - old_count
 				total_extra_payment += extra
+				last_extra_payments.append([pos[0], pos[1], extra])
 				print("Abzu (satır %d, sütun %d) çevresi genişledi, ek ödeme: %d" % [pos[0], pos[1], extra])
 			else:
 				cell.abzu_last_count = new_count

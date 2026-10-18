@@ -8,9 +8,10 @@ extends PanelContainer
 # 1 → "-" (henüz grup değil), 2 → 2, 3 → 3, 4 → 4 ...
 
 const CREATURE_NAMES = ["Salamander", "Roç", "Golem", "Abzu", "Dagon"]
-# Sütun sayısı en yüksek kalıcı ilerleme eşiğine göre: Golem'in 10'luk eşiği de
-# tabloda görünsün diye 8 değil 10. (bkz. Progression.THRESHOLDS)
-const COLUMN_COUNT = 10
+# Sütun sayısı, ulaşılabilir en yüksek başarı değerine göre: Roç sürüsü ve
+# Abzu komşu sayısı 8'de tavanlanıyor, Golem kademe farkı en çok 7 olabiliyor
+# (tahta 8 satır). Daha fazlası boş sütun olurdu. (bkz. Progression.THRESHOLDS)
+const COLUMN_COUNT = 8
 const UNIT_SOUL_SIZE := 40.0   # başlıktaki birim ikonunun boyutu
 const BONUS_SOUL_SIZE := 34.0  # alttaki kalıcı bonus satırının ikonu
 
@@ -228,11 +229,13 @@ func _threshold_for(creature: int, value: int) -> Dictionary:
 func _payout_at(creature: int, c: int) -> int:
 	match creature:
 		TileDef.Creature.SALAMANDER:
-			return 3 + (c - 1) * 2 if c <= _cap_for(creature) else 0
+			return 3 * c if c <= _cap_for(creature) else 0
 		TileDef.Creature.ROC:
 			return c if c >= 2 and c <= _cap_for(creature) else 0
 		TileDef.Creature.GOLEM:
-			return c
+			# Ödeme en uzak eşle arasındaki SATIR farkı; 8 satırlık tahtada en
+			# büyük fark 7, dolayısıyla 8. sütuna ulaşılamaz.
+			return c if c <= Board.ROWS - 1 else 0
 		TileDef.Creature.ABZU:
 			return c if c <= 8 else 0
 		TileDef.Creature.DAGON:

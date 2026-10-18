@@ -22,6 +22,7 @@ const DIM_COLOR := Color(0.078431, 0.086275, 0.168627, 0.65)
 static var skip_next := false
 
 var progress_panel: ProgressionPanel   # "İlerleme" ekranı, ilk açılışta kurulur
+var credits_panel: CreditsPanel        # "Künye" ekranı, ilk açılışta kurulur
 
 
 static func consume_skip() -> bool:
@@ -94,6 +95,7 @@ func _build_menu() -> void:
 	vbox.add_child(_menu_button("Oyna", _on_play_pressed))
 	vbox.add_child(_menu_button("Nasıl Oynanır", _on_tutorial_pressed))
 	vbox.add_child(_menu_button("İlerleme", _on_progress_pressed))
+	vbox.add_child(_menu_button("Künye", _on_credits_pressed))
 	vbox.add_child(_menu_button("Çıkış", _on_quit_pressed))
 
 	# Ses anahtarları ana düğmelerin altında, yan yana ve küçük boyda: menüyü
@@ -193,6 +195,15 @@ func _on_progress_pressed() -> void:
 		progress_panel = ProgressionPanel.new()
 		add_child(progress_panel)
 	progress_panel.set_open(true)
+
+
+# Künye ekranı İlerleme ile aynı tarif: menünün üstünde açılır, menünün çocuğu
+# olarak durur, ilk basışta kurulur.
+func _on_credits_pressed() -> void:
+	if credits_panel == null:
+		credits_panel = CreditsPanel.new()
+		add_child(credits_panel)
+	credits_panel.set_open(true)
 
 
 func _on_quit_pressed() -> void:

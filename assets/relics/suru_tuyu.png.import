@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bo8wow7ko0hf"
-path="res://.godot/imported/panel_draft.png-5731d3e61d44b13769df7ec10b2a96a4.ctex"
+uid="uid://cwq3pm1qbau76"
+path="res://.godot/imported/suru_tuyu.png-fbfac34bbb2df10426e0473f9eccb8cb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/panel_draft.png"
-dest_files=["res://.godot/imported/panel_draft.png-5731d3e61d44b13769df7ec10b2a96a4.ctex"]
+source_file="res://assets/relics/suru_tuyu.png"
+dest_files=["res://.godot/imported/suru_tuyu.png-fbfac34bbb2df10426e0473f9eccb8cb.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c65lc8o6qy8hd"
-path="res://.godot/imported/panel_log.png-20a3915baa058b03fa93f8cc9cb580af.ctex"
+uid="uid://cxby3ibp8nwj3"
+path="res://.godot/imported/ayna_tahta.jpg-8a376e71a23b7511f1797bbbfa42359c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/panel_log.png"
-dest_files=["res://.godot/imported/panel_log.png-20a3915baa058b03fa93f8cc9cb580af.ctex"]
+source_file="res://assets/relics/ayna_tahta.jpg"
+dest_files=["res://.godot/imported/ayna_tahta.jpg-8a376e71a23b7511f1797bbbfa42359c.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
@@ -36,5 +36,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=0
+process/size_limit=512
 detect_3d/compress_to=1

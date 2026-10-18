@@ -2,6 +2,10 @@ extends PanelContainer
 
 signal pair_selected(pair: Dictionary)
 signal refresh_selected()
+# Alınamayan bir karta tıklandı (ya da tuşuna basıldı). reason: "fit" kenarları
+# hiçbir açıda tutmuyor, "soul" ruh yetmiyor. Sesi board_view çalar — ses
+# çalan tek yer orası (bkz. CLAUDE.md, Audio).
+signal card_rejected(reason: String)
 
 const CARD_SEPARATION := 8
 # Kart sayısı çekilişe göre değişir (normalde 3, Zaman Kumu kalıntısıyla 4);
@@ -116,6 +120,11 @@ func _rebuild(money: int) -> void:
 			preview.set_meta("draft_index", i)   # klavyeden seçim için (select_card)
 			preview.clicked.connect(_on_buy_pressed.bind(i))
 			buy_cards.append(preview)
+		else:
+			# Alınamayan kart da tıkı duyar: oyuncuya NEDEN alamadığını sesle
+			# bildiriyoruz. Görsel ayrım zaten var (sığmıyorsa kırmızı çerçeve,
+			# ruh yetmiyorsa kızıl fiyat), ses onu doğruluyor.
+			preview.rejected.connect(_on_card_rejected.bind(i))
 
 		# Fiyat, tile'ın hemen altında ruh ikonunun içinde yazar. Alınamamanın
 		# iki sebebi görsel olarak ayrı: sığmıyorsa tile kırmızı çerçeveli,
@@ -135,13 +144,17 @@ func _rebuild(money: int) -> void:
 	var refresh_cost = 0 if RelicManager.free_refresh_available() else Economy.REFRESH_COST
 	refresh_button = Button.new()
 	refresh_button.text = "Yenile"
+	# Kısayol tooltip'te yazar (gezinme düğmeleriyle aynı tarif); tooltip
+	# gecikmesi project.godot'ta sıfırlandığı için anında görünür.
+	refresh_button.tooltip_text = "Çekilişi yenile  (R)"
 	refresh_button.disabled = money < refresh_cost
 	refresh_button.pressed.connect(func(): refresh_selected.emit())
 	refresh_row.add_child(refresh_button)
 	refresh_row.add_child(SoulAmount.create(refresh_cost, TITLE_SOUL_SIZE))
 
 # Klavyeden kart seçimi (board_view çağırır). Yalnızca ALINABİLİR kartlar
-# seçilebilir — fareyle de öyle, tıklanabilir olanlar buy_cards'ta.
+# seçilebilir — fareyle de öyle, tıklanabilir olanlar buy_cards'ta. Alınamayan
+# bir kartın tuşuna basmak, ona tıklamakla aynı reddetme sesini verir.
 func select_card(index: int) -> bool:
 	if index < 0 or index >= current_draft.size():
 		return false
@@ -151,8 +164,29 @@ func select_card(index: int) -> bool:
 			preview = card
 			break
 	if preview == null:
+		_on_card_rejected(index)
 		return false
 	_on_buy_pressed(index)
+	return true
+
+
+# Kart neden alınamadı? Kenarlar hiçbir açıda tutmuyorsa "fit", tutuyor ama ruh
+# yetmiyorsa "soul". İkisi birden ise "fit" söylenir: ruh bulunsa bile o karo
+# o hücreye konulamaz, asıl engel odur.
+func _on_card_rejected(index: int) -> void:
+	if index < 0 or index >= current_draft.size():
+		return
+	var fits: bool = index < current_fits.size() and current_fits[index]
+	card_rejected.emit("soul" if fits else "fit")
+
+
+# Klavyeden yenileme (board_view "R" tuşunda çağırır). select_card ile aynı
+# kural: yalnızca farenin de basabileceği durumda çalışır — düğme yoksa ya da
+# ruh yetmediği için kapalıysa tuş hiçbir şey yapmaz.
+func press_refresh() -> bool:
+	if not is_instance_valid(refresh_button) or refresh_button.disabled:
+		return false
+	refresh_selected.emit()
 	return true
 
 

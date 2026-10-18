@@ -3,10 +3,10 @@ extends PanelContainer
 
 const CREATURE_NAMES = ["Salamander", "Roç", "Golem", "Abzu", "Dagon"]
 const CREATURE_DESCRIPTIONS = [
-	"Tahtanın orta eksenine göre simetrik bir Salamander ile eşleşince öder.",
+	"Tahtanın dikey orta eksenine göre simetrik bir Salamander ile eşleşince öder.",
 	"Bitişik Roç'lar bir sürü oluşturur; sürüdeki Roç kadar öder.",
-	"En yakın diğer Golem'e olan mesafeye göre öder; ilk Golem eşini bekler.",
-	"Çevresindeki dolu komşu sayısına göre öder; yeni komşu eklendikçe tekrar öder.",
+	"En uzak diğer Golem ile arasındaki kademe (satır) farkı kadar öder; ilk Golem eşini bekler.",
+	"Çevresindeki dolu komşu karo sayısına göre öder; yeni komşu eklendikçe tekrar öder.",
 	"Çapraz komşularındaki her Dagon için öder.",
 ]
 

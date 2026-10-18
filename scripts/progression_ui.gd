@@ -10,8 +10,11 @@ extends CanvasLayer
 # (queue_free) çocuğu olarak birlikte gider.
 
 const LAYER := 35
-# Ekranın tamamını örter: arkadaki menü içeriden görünmesin.
-const BACKDROP_COLOR := Color(0.039, 0.043, 0.086, 1.0)
+# Arka perde: ekranın tamamını oyunun kendi orman fonuyla örter. Düz lacivert
+# bir dikdörtgendi; menünün üstüne açıldığı için arkayı kapatması gerekiyor ama
+# uydurma bir renk yerine oyunun fonunu göstermek daha bütünlüklü duruyor.
+# Karartma yok: panelin kendi opak zemini zaten onu fondan ayırıyor.
+const BACKDROP_DIM := Color(0, 0, 0, 0)
 # Panelin zemini: çerçeve dokusunun içi boş, bu yüzden altına öğretici kutusundaki
 # tarif serilir — oyunun orman fonu + üstüne gece lacivertinden koyu bir karartma.
 const PANEL_DIM_COLOR := Color(0.078431, 0.086275, 0.168627, 0.82)
@@ -28,7 +31,7 @@ const DESC_COLOR := Color("#D6D2E8")
 const LOCKED_NAME_COLOR := Color("#9A94B0")
 const LOCKED_TINT := Color(0.5, 0.5, 0.56, 1.0)
 
-var backdrop: ColorRect
+var backdrop: Control
 var panel: PanelContainer
 
 
@@ -39,11 +42,15 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	backdrop = ColorRect.new()
+	backdrop = Control.new()
 	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
-	backdrop.color = BACKDROP_COLOR
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	backdrop.gui_input.connect(_on_backdrop_input)   # boşluğa tıklayınca kapanır
 	add_child(backdrop)
+
+	var backdrop_art := UiTheme.art_backdrop(BACKDROP_DIM)
+	backdrop_art.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.add_child(backdrop_art)
 
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)

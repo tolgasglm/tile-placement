@@ -15,10 +15,17 @@ extends RefCounted         # Sahneye bağlı olmayan, saf mantık sınıfı
 # satırına göre işler: yukarıdan bir hücre seçen zor, aşağıdan seçen kolay
 # oranlarla çekiliş görür.
 #
-# NOT: Bu, fiyatları da dolaylı olarak değiştirir — compute_price'ta Eter
-# pahalılık, Boşluk indirim kaynağı olduğu için üst satırlarda tile'lar ortalama
-# daha ucuz ama yerleştirmesi daha zor olur. Bilinçli bir tasarım kararı,
-# compute_price'ı buna göre "düzeltmeye" çalışma.
+# NOT: Bu, fiyatları da dolaylı olarak etkiler — Eter pahalılık, Boşluk indirim
+# kaynağı olduğu için üst satırlarda tile'lar KENDİLİĞİNDEN ucuzlar (ortalama
+# 3.80'den 2.13'e düşüyordu). Bu istenmiyor: yukarı çıkmak pahalı olmalı. Bu
+# yüzden taban fiyat da satıra bağlı (ROW_BASE_PRICE) ve o düşüşü fazlasıyla
+# karşılıyor.
+# Tile'ın TABAN fiyatı, konacağı hücrenin satırına göre. ROW_EDGE_WEIGHTS ile
+# aynı indeksleme: 0 = en üst/kazanma satırı, 7 = en alt/başlangıç satırı.
+# Yukarı çıkmak kademeli olarak pahalılaşır: başlangıçta 3, tepede 8.
+# Alttan üste okunduğunda dizi şudur: 3, 3, 3, 4, 4, 5, 6, 8.
+const ROW_BASE_PRICE = [8, 6, 5, 4, 4, 3, 3, 3]
+
 const ROW_EDGE_WEIGHTS = [
 	{TileDef.Element.ETHER:  9, TileDef.Element.VOID: 31,   # satır 0 — kazanma satırı
 		TileDef.Element.FIRE: 15, TileDef.Element.WATER: 15,
@@ -49,6 +56,7 @@ const ROW_EDGE_WEIGHTS = [
 
 func _init() -> void:
 	_validate_row_weights()
+	_refill_creature_pool()
 
 
 # Tablo elle düzenlenirken bir satırın toplamı 100'den kayarsa hiçbir yerde hata
@@ -58,6 +66,8 @@ func _init() -> void:
 func _validate_row_weights() -> void:
 	assert(ROW_EDGE_WEIGHTS.size() == Board.ROWS,
 		"Ağırlık tablosu %d satır, tahta %d satır" % [ROW_EDGE_WEIGHTS.size(), Board.ROWS])
+	assert(ROW_BASE_PRICE.size() == Board.ROWS,
+		"Taban fiyat tablosu %d satır, tahta %d satır" % [ROW_BASE_PRICE.size(), Board.ROWS])
 	for row in range(ROW_EDGE_WEIGHTS.size()):
 		var total = 0
 		for weight in ROW_EDGE_WEIGHTS[row].values():
@@ -106,7 +116,8 @@ func generate_edges(row: int) -> Dictionary:
 		"W": _weighted_pick(weights),
 	}
 
-func compute_price(edges: Dictionary) -> int:
+# row: tile'ın konacağı hücrenin satırı — taban fiyat buna göre değişir.
+func compute_price(edges: Dictionary, row: int) -> int:
 	var ether_count = 0   # Eter kenar sayısı (artık pahalılık kaynağı bu)
 	var void_count = 0    # Void kenar sayısı (hâlâ indirim kaynağı, değişmedi)
 
@@ -132,45 +143,111 @@ func compute_price(edges: Dictionary) -> int:
 	# NOT: Void hâlâ indirim yapıyor — çünkü Void bir yöne genişlemeyi tamamen engelliyor,
 	# bu da tile'ı Eter kadar "esnek/değerli" yapmıyor, hatta kısıtlayıcı. Bu kısım değişmedi.
 
-	var price = 3 + difficulty - void_discount   # Taban 2'den 3'e çıkarıldı
+	var base = ROW_BASE_PRICE[clampi(row, 0, ROW_BASE_PRICE.size() - 1)]
+	var price = base + difficulty - void_discount
 	# Fiyat kalıntıları (Sabit Yön) tek noktada uygulanır:
 	return RelicManager.adjust_tile_price(price)
 
-# Rastgele bir yaratık seçer. Yaratık Sözleşmesi kalıntısı bir türü havuzdan çıkarır.
-func pick_random_creature() -> int:
-	var creatures = []
+# --- Yaratık havuzu ------------------------------------------------------
+#
+# Yaratıklar eşit olasılıkla değil, TÜKENEN bir havuzdan çekilir: havuzda her
+# türden CREATURE_POOL_SIZE adet vardır ve bir tür çekilişte göründükçe payı
+# azalır. Beş kez Abzu çıktıysa Abzu'nun ağırlığı 15, diğerlerininki 20 olur;
+# yani aynı yaratığın üst üste gelmesi gitgide zorlaşır ve bir koşuda hiç
+# görünmeyen tür kalmaz. Düz rastgelede uzun kuraklıklar (ve kümelenmeler)
+# oluyordu.
+#
+# Havuz KOŞU BAŞINA: board_view her yeni oyunda yeni bir TileGenerator kuruyor.
+# Hepsi tükenirse havuz yeniden doldurulur — yoksa çekiliş üretilemez hale
+# gelirdi (bir koşuda kabaca bir havuz dolusu kart üretiliyor).
+const CREATURE_POOL_SIZE := 20
+
+var _creature_pool: Dictionary = {}
+
+func _refill_creature_pool() -> void:
+	for c in TileDef.Creature.values():
+		_creature_pool[c] = CREATURE_POOL_SIZE
+
+
+# Havuzdaki kalan adetler (arayüz/test için; kopya döner).
+func creature_pool_counts() -> Dictionary:
+	return _creature_pool.duplicate()
+
+
+# Çekilişte görünmeyen bir yaratığı havuza geri koyar: önizleme çöpe gittiğinde
+# ya da bir kartın yaratığı sonradan değiştirildiğinde (Ortak Kan / Karanlık
+# Tohum) sayım bozulmasın diye.
+func return_creature(creature: int) -> void:
+	if _creature_pool.has(creature):
+		_creature_pool[creature] = mini(_creature_pool[creature] + 1, CREATURE_POOL_SIZE)
+
+
+# Havuzdan bir yaratık düşer (zorla konan Dagon gibi haller için).
+func take_creature(creature: int) -> void:
+	if _creature_pool.has(creature):
+		_creature_pool[creature] = maxi(_creature_pool[creature] - 1, 0)
+
+
+# Havuzdan bir yaratık seçer; ağırlık = o türden KALAN adet. Yaratık Sözleşmesi
+# kalıntısı bir türü tamamen dışarıda bırakır (payı da eksilmez).
+# consume false ise yalnızca "ne gelirdi" sorulur, havuza dokunulmaz — kayıp
+# kontrolü gibi oyuncuya hiç gösterilmeyen çekilişler bunu kullanır.
+func pick_random_creature(consume: bool = true) -> int:
+	var allowed: Array = []
 	for c in TileDef.Creature.values():
 		if not RelicManager.creature_forbidden(c):
-			creatures.append(c)
-	if creatures.is_empty():
-		creatures = TileDef.Creature.values()   # güvenlik: hepsi yasaklandıysa
-	return creatures[randi() % creatures.size()]
+			allowed.append(c)
+	if allowed.is_empty():
+		allowed = TileDef.Creature.values()   # güvenlik: hepsi yasaklandıysa
 
-# Tek bir "tile + yaratık" çifti üretir (kenarlar verilen satırın oranlarıyla)
-func generate_draft_pair(row: int) -> Dictionary:
+	var total := 0
+	for c in allowed:
+		total += int(_creature_pool.get(c, 0))
+	if total <= 0:
+		# İzin verilenlerin hepsi tükendi: havuz yeniden dolar.
+		_refill_creature_pool()
+		for c in allowed:
+			total += int(_creature_pool.get(c, 0))
+
+	var roll := randi() % total
+	var picked: int = allowed[allowed.size() - 1]
+	for c in allowed:
+		roll -= int(_creature_pool.get(c, 0))
+		if roll < 0:
+			picked = c
+			break
+	if consume:
+		take_creature(picked)
+	return picked
+
+# Tek bir "karo + yaratık" çifti üretir (kenarlar verilen satırın oranlarıyla)
+func generate_draft_pair(row: int, consume: bool = true) -> Dictionary:
 	var edges = generate_edges(row)
 	# Fiyat, Eter Dokusu override'ından ÖNCE hesaplanır: kenar Eter'e dönse bile
 	# tile'ın fiyatı artmaz.
-	var price = compute_price(edges)
+	var price = compute_price(edges, row)
 	if RelicManager.edge_ether_relic():
 		var dirs = ["N", "E", "S", "W"]
 		edges[dirs[randi() % dirs.size()]] = TileDef.Element.ETHER
-	var creature = pick_random_creature()
+	var creature = pick_random_creature(consume)
 	return {"edges": edges, "price": price, "creature": creature}
 
 # Çekiliş üretir (her turda oyuncuya gösterilecek seçenekler). row: tile'ın
 # konacağı hücrenin satırı — kenar oranları buna göre seçilir. Seçenek sayısı
 # normalde 3, Zaman Kumu kalıntısıyla 4. Karanlık Tohum armed ise en az bir
 # seçenek Dagon olur (garantiyi board_view gerçek çekilişi gösterince temizler).
-func generate_draft(row: int) -> Array:
+func generate_draft(row: int, consume: bool = true) -> Array:
+	# Ortak Kan tek yaratık dağıtıyorsa havuzdan da TEK adet düşmeli: kartların
+	# kendi yaratıkları hiç çekilmez.
+	var single = RelicManager.draft_single_creature()
 	var pairs = []
 	for i in range(RelicManager.draft_size()):
-		pairs.append(generate_draft_pair(row))
+		pairs.append(generate_draft_pair(row, consume and not single))
 
 	# Ortak Kan: bütün seçenekler aynı yaratığı taşır. Yaratık seçimi burada bir
 	# kez yapılır, kenar/fiyat üretimi değişmez.
-	if RelicManager.draft_single_creature():
-		var shared = pick_random_creature()
+	if single:
+		var shared = pick_random_creature(consume)
 		for p in pairs:
 			p["creature"] = shared
 
@@ -181,6 +258,12 @@ func generate_draft(row: int) -> Array:
 				has_dagon = true
 				break
 		if not has_dagon:
-			pairs[randi() % pairs.size()]["creature"] = TileDef.Creature.DAGON
+			# Değiştirilen kartın yaratığı havuza geri döner, yerine Dagon düşer:
+			# zorla konan kart da havuzdan sayılır.
+			var idx = randi() % pairs.size()
+			if consume:
+				return_creature(pairs[idx]["creature"])
+				take_creature(TileDef.Creature.DAGON)
+			pairs[idx]["creature"] = TileDef.Creature.DAGON
 
 	return pairs

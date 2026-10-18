@@ -49,12 +49,12 @@ const THRESHOLDS := [
 		"title": "Gökyüzü Sürüsü", "achievement": "8'li Roç sürüsü!",
 		"requirement": "Tek bir sürüyü 8 Roç'a ulaştır"},
 
+	{"id": "golem_5", "creature": TileDef.Creature.GOLEM, "value": 5, "reward": 1,
+		"title": "Taş Yankısı", "achievement": "5 kademelik Golem ödemesi!",
+		"requirement": "Bir Golem'i eşinden 5 kademe uzağa yerleştir"},
 	{"id": "golem_7", "creature": TileDef.Creature.GOLEM, "value": 7, "reward": 1,
-		"title": "Taş Yankısı", "achievement": "7 mesafelik Golem ödemesi!",
-		"requirement": "Bir Golem'i eşinden 7 birim uzağa yerleştir"},
-	{"id": "golem_10", "creature": TileDef.Creature.GOLEM, "value": 10, "reward": 1,
-		"title": "Uzak Taş", "achievement": "10 mesafelik Golem ödemesi!",
-		"requirement": "Bir Golem'i eşinden 10 birim uzağa yerleştir"},
+		"title": "Uzak Taş", "achievement": "7 kademelik Golem ödemesi!",
+		"requirement": "Bir Golem'i eşinden 7 kademe uzağa yerleştir"},
 
 	{"id": "abzu_6", "creature": TileDef.Creature.ABZU, "value": 6, "reward": 1,
 		"title": "Derin Su", "achievement": "6 komşulu Abzu!",

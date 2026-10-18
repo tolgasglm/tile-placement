@@ -32,8 +32,22 @@ func _ready() -> void:
 	add_child(atmosphere)
 	move_child(atmosphere, 0)
 
-	# Oyun sırasında hep görünen "Ana Menü" / "Yeniden Başla" düğmeleri (Esc / R);
+	# Oyun sırasında hep görünen "Ana Menü" düğmesi (Esc);
 	# sağ sütunun üst şeridine hizalanır.
+	# Kara Gün Akçesi kumbarasının rozeti: ruh sayacının solunda, kumbara
+	# açıkken görünür. Sahnedeki bir düğüm olmadığı için %isim ile değil
+	# doğrudan buradan ekleniyor.
+	var piggy = PiggyBadge.new()
+	piggy.board_view = get_node("%GridContainer")
+	add_child(piggy)
+
+	# İleri Görüş önizleme paneli: ruh günlüğünün üstüne serilir, yalnızca
+	# kalıntı varken ve çekiliş açıkken görünür.
+	var foresight = ForesightPanel.new()
+	foresight.anchor_node = get_node("%MoneyLogPanel")
+	add_child(foresight)
+	get_node("%GridContainer").foresight_panel = foresight
+
 	nav_buttons = GameNavButtons.new()
 	nav_buttons.column_anchor = get_node("%DraftPanel").get_parent()
 	add_child(nav_buttons)

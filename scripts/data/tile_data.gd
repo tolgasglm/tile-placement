@@ -27,6 +27,9 @@ var placed_creature: int = -1
 # o anki dolu komşu sayısı burada saklanır. Yeni komşu tile eklendikçe bu değer güncellenir,
 # ve aradaki farkı sonradan ödeyebilmemizi sağlar.
 var abzu_last_count: int = 0
+# Bu Dagon için en son ödenen eş sayısı. Yeni bir Dagon çevresine gelince aradaki
+# fark kadar GERİYE DÖNÜK ödeme yapılır (Abzu ile aynı mantık).
+var dagon_last_count: int = 0
 
 # Verilen yön harfine ("N","E","S","W") karşılık gelen elementi döndürür
 func get_edge(direction: String) -> Element:

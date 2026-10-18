@@ -10,9 +10,16 @@ class_name UiTheme
 # okur, dosya yolu tekrarlanmaz.
 const BACKGROUND = preload("res://assets/background.png")
 
-const PANEL_LEGEND = preload("res://assets/ui/panel_legend.png")
-const PANEL_DRAFT = preload("res://assets/ui/panel_draft.png")
-const PANEL_LOG = preload("res://assets/ui/panel_log.png")
+# Panel çerçeveleri. Dosyalar İÇİ BOŞ dokuzlu-yama (nine-patch) olmak zorunda:
+# panelin ortasında ne varsa (oyun tahtası, art_backdrop zemini) görünmeye devam
+# eder, çerçeve yalnızca kenara çizilir. Kaynak görseller siyah zeminli JPG
+# olarak geldi (assets/ui/*_paneli.jpg); oyuna giren bu PNG'ler onların zemini
+# kaldırılmış hâlleri — kare siyah bir blok ormanın üstünde kutu gibi duruyordu.
+# Ölçüler eski çerçevelerle aynı tutuldu (~306 px genişlik, ~%5 kenar kalınlığı),
+# böylece aşağıdaki kenar payları ve panellerin iç boşlukları olduğu gibi geçerli.
+const PANEL_LEGEND = preload("res://assets/ui/yaratik_paneli.png")
+const PANEL_DRAFT = preload("res://assets/ui/draft_paneli.png")
+const PANEL_LOG = preload("res://assets/ui/log_paneli.png")
 const KEY_ICON = preload("res://assets/ui/key.png")
 
 # Kazanma hücresindeki kilidin beş aşaması — index = o ana kadar toplanan
@@ -263,11 +270,65 @@ static func _register_button(theme: Theme, type: String, height: float, side_ext
 	theme.set_color("font_disabled_color", type, BUTTON_TEXT_DISABLED)
 
 
+# Salamander'ın simetri kuralını gösteren alev çerçevesi. Ortası tamamen
+# saydam, yani altındaki karo olduğu gibi görünür.
+const FLAME_FRAME = preload("res://assets/elements/alev_cerceve.png")
+
+static var _flame_content: Rect2 = Rect2()
+
+# Görünür sayılmak için gereken en düşük alfa. Dokunun kenarlarında gözle
+# görülmeyen (alfa 1-16) pikseller oluyor; Image.get_used_rect bunları da
+# saydığı için neredeyse tüm tuvali "dolu" buluyor ve hizalama işe yaramıyordu.
+const FLAME_ALPHA_THRESHOLD := 0.08
+# Tarama için dokunun küçültüleceği boy. 1254x1254'ü piksel piksel taramak
+# GDScript'te yavaş; küçültme motor tarafında yapılıyor ve 128'lik ızgara
+# hizalama için fazlasıyla hassas (yaklaşık %0.8).
+const FLAME_SCAN_SIZE := 128
+
+
+# Alev çerçevesinin GÖRÜNÜR alanı, 0..1 aralığına normalize edilmiş.
+#
+# Doku kenarlarında değişken miktarda saydam pay olabiliyor ve görsel her
+# değiştiğinde bu pay da değişiyor. Sabit bir ölçek çarpanıyla hizalamak her
+# seferinde yeniden ayar istiyordu; bunun yerine payı ölçüp çerçeveyi ona göre
+# yerleştiriyoruz. Sonuç önbelleğe alınır, ölçüm bir kez yapılır.
+static func flame_content_rect() -> Rect2:
+	if _flame_content.size.x > 0.0:
+		return _flame_content
+	_flame_content = Rect2(Vector2.ZERO, Vector2.ONE)   # ölçülemezse tüm doku
+	var image := FLAME_FRAME.get_image()
+	if image == null:
+		return _flame_content
+	image = image.duplicate()
+	image.resize(FLAME_SCAN_SIZE, FLAME_SCAN_SIZE, Image.INTERPOLATE_BILINEAR)
+	var min_x := FLAME_SCAN_SIZE
+	var min_y := FLAME_SCAN_SIZE
+	var max_x := -1
+	var max_y := -1
+	for y in range(FLAME_SCAN_SIZE):
+		for x in range(FLAME_SCAN_SIZE):
+			if image.get_pixel(x, y).a < FLAME_ALPHA_THRESHOLD:
+				continue
+			min_x = mini(min_x, x)
+			min_y = mini(min_y, y)
+			max_x = maxi(max_x, x)
+			max_y = maxi(max_y, y)
+	if max_x < min_x or max_y < min_y:
+		return _flame_content
+	var scan := float(FLAME_SCAN_SIZE)
+	_flame_content = Rect2(
+		Vector2(min_x / scan, min_y / scan),
+		Vector2((max_x - min_x + 1) / scan, (max_y - min_y + 1) / scan))
+	return _flame_content
+
+
 const PLUS_ICON = preload("res://assets/ui/plus.png")
 const ROTATE_CW_ICON = preload("res://assets/ui/rotate-cw.png")
 const ROTATE_CCW_ICON = preload("res://assets/ui/rotate-ccw.png")
 const BACK_ICON = preload("res://assets/ui/back.png")          # oyun içi "Ana Menü" düğmesi
-const RESTART_ICON = preload("res://assets/ui/restart.png")    # oyun içi "Yeniden Başla" düğmesi
+# Bitiş ekranındaki "Yeniden Başla" yazılı düğme; oyun içi ikon düğmesi
+# kaldırıldığı için bu simge şu an kullanılmıyor, dosya dursun diye duruyor.
+const RESTART_ICON = preload("res://assets/ui/restart.png")
 
 # Sağ sütundaki eylem panelleri (çekiliş, yerleştirme, yaratık) aynı anda asla
 # görünmediği için aynı kutuyu paylaşırlar: aynı yükseklik ve — Spacer sütunun

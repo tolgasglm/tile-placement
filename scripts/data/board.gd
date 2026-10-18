@@ -58,6 +58,35 @@ func _place_keys() -> void:
 		key_positions.append(chosen[0])
 		key_positions.append(chosen[1])
 
+# Körebe kalıntısı: henüz toplanmamış anahtarları 2-5. satırlardaki BOŞ
+# hücrelere rastgele yeniden dağıtır. Toplanmış anahtarlar zaten listede
+# olmadığı için etkilenmez. Başlangıç ve kazanma hücresi ile dolu hücreler
+# dışarıda; iki anahtar aynı hücreye düşmez.
+# Yeterli boş hücre yoksa taşınabilen kadarı taşınır, gerisi yerinde kalır.
+const SCATTER_ROWS := [2, 3, 4, 5]
+
+func scatter_keys() -> void:
+	if key_positions.is_empty():
+		return
+	var spots = []
+	for r in SCATTER_ROWS:
+		for c in range(COLS):
+			# Boş olması yeterli: başlangıç (satır 7) ve kazanma (satır 0)
+			# hücreleri zaten SCATTER_ROWS aralığının dışında.
+			if grid[r][c] == null:
+				spots.append([r, c])
+	if spots.is_empty():
+		return
+	spots.shuffle()
+	var moved = []
+	for i in range(key_positions.size()):
+		if i >= spots.size():
+			moved.append(key_positions[i])   # yer kalmadı: olduğu yerde kalsın
+		else:
+			moved.append(spots[i])
+	key_positions = moved
+
+
 # Verilen hücrede henüz toplanmamış bir anahtar olup olmadığını kontrol eder
 func is_key_cell(row: int, col: int) -> bool:
 	for pos in key_positions:

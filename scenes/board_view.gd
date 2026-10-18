@@ -24,6 +24,10 @@ const SOUND_KEY_COLLECT_PATH := "res://assets/voices/key.wav"   # anahtar hücre
 const SOUND_LOCK_STEP_PATH := ""                                 # kilit bir aşama ilerlediğinde
 const SOUND_LOCK_OPEN_PATH := ""                                 # dördüncü anahtarda kilit açıldığında
 const SOUND_RELIC_PATH := "res://assets/voices/relic.wav"        # kalıntı seçildiğinde
+# Alınamayan karta tıklanınca çalan iki ret sesi: kenarlar hiçbir açıda
+# tutmuyorsa FIT, ruh yetmiyorsa SOUL (bkz. DraftPanel.card_rejected).
+const SOUND_REJECT_FIT_PATH := "res://assets/voices/reject_fit.wav"
+const SOUND_REJECT_SOUL_PATH := "res://assets/voices/reject_soul.wav"
 
 # Yaratık sesleri — TileDef.Creature enum sırasına göre
 const CREATURE_SOUNDS: Dictionary = {
@@ -46,6 +50,7 @@ const VOLUME_KEY_COLLECT := 0.0
 const VOLUME_LOCK_STEP := 0.0
 const VOLUME_LOCK_OPEN := 0.0
 const VOLUME_RELIC := 0.0
+const VOLUME_REJECT := 0.0
 
 # Yaratık sesleri kaynak dosyalarında farklı seviyelerde kaydedilmiş; burada
 # tek tek dengeleniyor (enum sırasına göre, dB cinsinden)
@@ -70,6 +75,9 @@ var economy: Economy
 var board_cell_size: float = 72.0
 
 var draft_panel
+# İleri Görüş önizleme paneli; main.gd kurup referansını veriyor (sahnede
+# olmadığı için %isim ile bulunamaz). Kalıntı yoksa hiç görünmez.
+var foresight_panel
 var placement_panel
 var creature_panel
 var money_log_panel
@@ -92,6 +100,29 @@ var is_drafting: bool = false   # "+" tıklandığı andan itibaren tile tahtaya
 
 # Klavye imleci: üzerinde durulan hücre [satır, sütun] ya da boş. Yalnızca yön
 # tuşlarına basılınca doğar; fareyle oynayan oyuncu hiç görmez.
+# Körebe ile bir anahtar 2 kalıntı verebiliyor: kalan seçim hakkı burada
+# tutulur, her seçimden sonra _offer_next_relic bir sonrakini açar.
+# --- İleri Görüş durumu ----------------------------------------------------
+# Yenileme önizlemesi: "şimdi yenilersen bu gelir". Hangi satırın oranlarıyla
+# üretildiği de saklanıyor — oyuncu başka bir hücreye geçerse bu çekiliş artık
+# yanlış satırın oranlarını taşıdığı için atılır ve yeniden üretilir.
+var foresight_refresh_draft: Array = []
+var foresight_refresh_row: int = -1
+# Sonraki turun KİLİTLİ çekilişi. Tur biterken, oyuncunun ulaştığı en yüksek
+# satırın oranlarıyla üretilir ve sonraki turda hangi hücre seçilirse seçilsin
+# aynen verilir — yani o tur satır oranları uygulanmaz. Bilinçli takas.
+var foresight_locked_draft: Array = []
+# Ulaşılan en yüksek satır (en küçük indeks). Kilitli çekilişin çapası bu:
+# geriye gitmediği için oyuncu aşağı hücre seçerek sömüremez.
+var highest_row_reached: int = Board.ROWS - 1
+
+var pending_relic_picks: int = 0
+# Körebe'nin iki seçimi AYNI üçlüden yapılır: liste bir kez üretilip saklanır,
+# seçilen kart çıkarılıp kalanlar yeniden gösterilir. Her seçimde yeni bir
+# üçlü üretmek "tek draft" kuralını bozardı.
+var pending_relic_choices: Array = []
+var last_key_index: int = 0
+
 var key_cursor: Array = []
 # Öğretici çalışırken klavye kapalı: öğretici adımları oyuncunun belirli bir
 # ögeye TIKLAMASINI bekliyor, kısayol o kilidi delerdi. main.gd dolduruyor.
@@ -159,6 +190,7 @@ func _ready() -> void:
 
 	draft_panel.pair_selected.connect(_on_pair_selected)
 	draft_panel.refresh_selected.connect(_on_refresh_selected)
+	draft_panel.card_rejected.connect(_on_card_rejected)
 	placement_panel.rotate_requested.connect(_on_rotate_requested)
 	placement_panel.confirm_requested.connect(_on_confirm_placement)
 	creature_panel.skip_requested.connect(_on_creature_skip)
@@ -190,7 +222,9 @@ func _render_board() -> void:
 		for c in range(Board.COLS):
 			var cell_node = TileCell.new()
 			cell_node.cell_size = board_cell_size
-			cell_node.has_key = board.is_key_cell(r, c)
+			# Körebe anahtarları gizler: hücre hâlâ anahtar taşır (üstüne karo
+			# konunca toplanır) ama hiçbir görsel iz vermez.
+			cell_node.has_key = board.is_key_cell(r, c) and not RelicManager.keys_are_hidden()
 			# Kazanma hücresi doldurulana kadar kilidi taşır. Aşama
 			# board.keys_collected'tan değil displayed_keys'ten okunur: kilit
 			# ancak anahtar uçuşu kilide varınca ilerlemeli.
@@ -271,6 +305,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if is_drafting and draft_panel.visible:
+		# R: çekilişi yenile. Eskiden oyunu baştan başlatıyordu (game_nav_ui);
+		# yeniden başlatma oyun içinden kaldırıldı ve tuş yenilemeye verildi.
+		if key == KEY_R:
+			if draft_panel.press_refresh():
+				get_viewport().set_input_as_handled()
+			return
 		if KEY_CARD_SLOTS.has(key) and draft_panel.select_card(KEY_CARD_SLOTS[key]):
 			get_viewport().set_input_as_handled()
 		return
@@ -432,9 +472,14 @@ func _show_draft_for_pending() -> void:
 		return
 	var row = pending_cell[0]
 	var col = pending_cell[1]
-	# Kenar oranları seçilen hücrenin satırından gelir: yukarıdaki hücrelerde
-	# Eter azalır, Boşluk artar (bkz. TileGenerator.ROW_EDGE_WEIGHTS).
-	var draft = generator.generate_draft(row)
+	# Kenar oranları normalde seçilen hücrenin satırından gelir: yukarıdaki
+	# hücrelerde Eter azalır, Boşluk artar (bkz. TileGenerator.ROW_EDGE_WEIGHTS).
+	# İleri Görüş kilitli bir çekiliş bıraktıysa O kullanılır ve bu tur satır
+	# oranları UYGULANMAZ — oyuncu önizlemeyi kazanırken satır seçerek çekilişi
+	# şekillendirme gücünü kaybeder.
+	var draft = _take_locked_draft()
+	if draft.is_empty():
+		draft = generator.generate_draft(row)
 	if not economy.can_afford_anything(draft):
 		_trigger_lose()
 		return
@@ -444,10 +489,21 @@ func _show_draft_for_pending() -> void:
 	var free_tile = RelicManager.ancient_key() and pending_cell_had_key
 	draft_panel.show_draft(draft, economy.money, fits_list, pending_surcharge, free_tile)
 	RelicManager.clear_dagon_guarantee()   # gerçek çekiliş gösterildi, garanti tüketildi
+	_refresh_foresight_preview(row)
 
 
 # Bir tile bu hücreye satın alınabilir mi? Sabit Yön varsa yalnızca açı 0
 # geçerlidir; yoksa dört açıdan biri uyması yeter.
+# Çekiliş panelinden gelir: oyuncu alamayacağı bir karta tıkladı (ya da tuşuna
+# bastı). Sebebi paneldeki bilgi belirliyor, sesi burada çalıyoruz — ses çalan
+# tek yer board_view (ayarlardan efektler kapalıysa _play_sfx zaten susar).
+func _on_card_rejected(reason: String) -> void:
+	if reason == "soul":
+		_play_sfx_path(SOUND_REJECT_SOUL_PATH, VOLUME_REJECT)
+	else:
+		_play_sfx_path(SOUND_REJECT_FIT_PATH, VOLUME_REJECT)
+
+
 func _tile_buyable(edges: Dictionary, row: int, col: int) -> bool:
 	if RelicManager.rotation_locked():
 		return board.tile_fits(edges, row, col)
@@ -462,16 +518,19 @@ func _on_pair_selected(pair: Dictionary) -> void:
 		price = 0
 
 	if not economy.can_afford(price):
+		_play_sfx_path(SOUND_REJECT_SOUL_PATH, VOLUME_REJECT)
 		return
 	_play_sfx(SOUND_SPEND, VOLUME_SPEND)
 	if price > 0:
 		economy.spend(price)
-		money_log_panel.log_spend("Tile · %s" % CREATURE_NAMES[pair["creature"]], price)
+		money_log_panel.log_spend("Karo · %s" % CREATURE_NAMES[pair["creature"]], price)
 	if economy.has_lost():
 		_trigger_lose()
 		return
 	pending_pair = pair
 	draft_panel.hide_panel()
+	if foresight_panel != null:
+		foresight_panel.hide_panel()
 	# Dallanmadan önce yayınlanır: tek açı uyuyorsa hemen ardından tile_placed de
 	# gelir ve öğretici döndürme adımını kendiliğinden atlar.
 	tile_purchased.emit()
@@ -485,7 +544,7 @@ func _on_pair_selected(pair: Dictionary) -> void:
 		if board.tile_fits(pair["edges"], row, col):
 			_finalize_tile_placement(0)
 		else:
-			push_warning("Sabit Yön: tile açı 0'da uymuyor")
+			push_warning("Sabit Yön: karo açı 0'da uymuyor")
 		return
 
 	var fit_count = _count_fitting_rotations(pair["edges"], row, col)
@@ -519,7 +578,15 @@ func _on_refresh_selected() -> void:
 		return
 
 	# Yenileme de aynı hücre için: oranlar yine pending_cell'in satırından gelir.
-	var draft = generator.generate_draft(pending_cell[0])
+	# İleri Görüş önizlemesi varsa oyuncuya GÖSTERİLEN çekiliş aynen verilir
+	# (yeniden üretilmez), arkasına yeni bir gizli çekiliş hazırlanır.
+	var row = pending_cell[0]
+	var draft: Array
+	if RelicManager.has_foresight() and foresight_refresh_row == row 			and not foresight_refresh_draft.is_empty():
+		draft = foresight_refresh_draft
+		foresight_refresh_draft = []
+	else:
+		draft = generator.generate_draft(row)
 
 	if not economy.can_afford_anything(draft):   # yenileme sonrası da kontrol ediyoruz
 		_trigger_lose()
@@ -532,6 +599,7 @@ func _on_refresh_selected() -> void:
 	var free_tile = RelicManager.ancient_key() and pending_cell_had_key
 	draft_panel.show_draft(draft, economy.money, fits_list, pending_surcharge, free_tile)
 	RelicManager.clear_dagon_guarantee()
+	_refresh_foresight_preview(row)   # yenilemenin arkasına yeni önizleme
 
 # Her ses kendi tek kullanımlık oynatıcısında çalar: arka arkaya gelen sesler
 # (satın alma + yerleştirme gibi) birbirini kesmez. Oynatıcı bitince kendini
@@ -562,32 +630,120 @@ func _play_sfx_path(path: String, volume_db: float) -> void:
 # node'un global_position'ı o ana kadar (0,0)'dır, bu yüzden node'dan okumak
 # anahtarı tahtanın sol üst köşesinde doğurup oraya çakılı bırakıyordu.
 # GridContainer'ın kendi konumu ise sahne açıldığından beri sabit.
+# Çerçeve saydam: altındaki karo ve yaratık okunur kalsın. Nabız bu iki değer
+# arasında gidip gelir.
+const FLAME_ALPHA_LOW := 0.5
+const FLAME_ALPHA_HIGH := 0.78
+
+# Bir yaratık ödeme yaptığında kazandırdığı ruh, o yaratığın hücresinden
+# yükselip saydamlaşarak kaybolur. Miktar her yerdeki gibi ruh damlasının
+# içinde yazar (bkz. soul_amount.gd), çıplak sayı değil.
+#
+# Efekt tahtanın DIŞINDA, kök düğüme eklenen geçici bir düğümde yaşar:
+# _render_board her durum değişiminde bütün hücreleri yok ediyor ve hücrenin
+# üstündeki bir tween ölürdü (alev işaretleriyle aynı gerekçe).
+const SOUL_RISE_SIZE := 52.0        # damlanın boyutu; hücreyi örtmeyecek kadar
+const SOUL_RISE_HEIGHT := 1.1       # kaç hücre boyu yükselir
+const SOUL_RISE_DURATION := 1.9       # aynı mesafe, daha uzun süre = daha yavaş
+
+func _float_soul(row: int, col: int, amount: int) -> void:
+	if amount <= 0:
+		return
+	var cell = _cell_rect(row, col)
+	var size = Vector2.ONE * SOUL_RISE_SIZE
+	var drop := SoulAmount.create(amount, SOUL_RISE_SIZE)
+	drop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	owner.add_child(drop)
+	drop.size = size
+	drop.pivot_offset = size / 2
+	drop.position = cell.get_center() - size / 2
+	drop.modulate = Color(1, 1, 1, 0)
+
+	var rise = cell.size.y * SOUL_RISE_HEIGHT
+	var tween = drop.create_tween()
+	tween.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	# Önce belirip hafifçe büyür, sonra yükselirken sönerek kaybolur
+	tween.tween_property(drop, "modulate", Color(1, 1, 1, 1), SOUL_RISE_DURATION * 0.18)
+	tween.parallel().tween_property(drop, "scale", Vector2(1.15, 1.15), SOUL_RISE_DURATION * 0.18)
+	tween.tween_property(drop, "position:y", drop.position.y - rise, SOUL_RISE_DURATION * 0.82)
+	tween.parallel().tween_property(drop, "modulate", Color(1, 1, 1, 0), SOUL_RISE_DURATION * 0.82)
+	tween.parallel().tween_property(drop, "scale", Vector2.ONE, SOUL_RISE_DURATION * 0.82)
+	tween.finished.connect(drop.queue_free)
+
+
+# Geriye dönük ödemelerin her birini kendi hücresinden yükseltir ve listeyi boşaltır.
+func _flush_extra_payment_souls() -> void:
+	for entry in scorer.last_extra_payments:
+		_float_soul(entry[0], entry[1], entry[2])
+	scorer.last_extra_payments.clear()
+
+
+# Bir hücrenin ekrandaki GERÇEK dikdörtgeni.
+#
+# _cell_center hesapla buluyor (hücre boyutu + ayraç) ve bu, GridContainer
+# hücreleri tam sayı konumlara yerleştirdiği için kayıyor: adım aslında 100,
+# hesap 96.5 + 4 = 100.5 diyor. Hata satır/sütun ilerledikçe birikiyordu
+# (son hücrede 3.5 piksele kadar). Düğüm yerleştiyse ondan okuyoruz; henüz
+# yerleşmediyse (yeni kurulan karo o karede (0,0)'da durur) hesaba düşülür.
+func _cell_rect(row: int, col: int) -> Rect2:
+	var node = get_cell_node(row, col)
+	if node != null and node.size.x > 0.0 and node.global_position != Vector2.ZERO:
+		return node.get_global_rect()
+	var size = Vector2.ONE * board_cell_size
+	return Rect2(_cell_center(row, col) - size / 2, size)
+
+
+# Alev çerçevesinin çizileceği dikdörtgen. Doku hücreye OLDUĞU GİBİ değil,
+# GÖRÜNÜR ALANI hücreyle çakışacak şekilde yerleştirilir: kenarlardaki saydam
+# pay (bkz. UiTheme.flame_content_rect) dışarıda kalır. Sabit bir ölçek
+# çarpanıyla hizalamak görsel her değiştiğinde yeniden ayar istiyordu.
+func _flame_rect(row: int, col: int) -> Rect2:
+	var content = UiTheme.flame_content_rect()
+	var cell = _cell_rect(row, col)
+	var draw_size = cell.size / content.size
+	var draw_pos = cell.position - Vector2(content.position.x * draw_size.x,
+		content.position.y * draw_size.y)
+	return Rect2(draw_pos, draw_size)
+
+
+# Alev işaretleri her karede hücrelere yeniden hizalanır. _render_board'un
+# çağırdığı _update_flame_marks o karede düğümler henüz yerleşmediği için
+# hesaba düşüyor; bir sonraki karede burası gerçek konumla düzeltir.
+func _process(_delta: float) -> void:
+	for key in flame_marks:
+		var mark = flame_marks[key]
+		var frame = mark["node"]
+		if not is_instance_valid(frame):
+			continue
+		var parts = key.split(",")
+		var rect = _flame_rect(int(parts[0]), int(parts[1]))
+		frame.position = rect.position
+		frame.size = rect.size
+		frame.pivot_offset = rect.size / 2
+
+
 # Bir hücrenin çevresinde kısa süreli alev çerçevesi. Salamander'ın simetri
 # kuralını görünür kılar: yeni Salamander'ın eşi (ya da eş bekleyen hücre).
-const FLAME_COLOR := Color("#FF7A6B")      # TileCell'deki Ateş rengi
 const FLAME_DURATION := 0.9
 
 func _flame_cell(row: int, col: int) -> void:
 	if row < 0 or row >= Board.ROWS or col < 0 or col >= Board.COLS:
 		return
-	var size = Vector2(board_cell_size, board_cell_size)
-	var frame := Panel.new()
-	var style := StyleBoxFlat.new()
-	style.draw_center = false            # yalnızca kenar; hücrenin kendisi görünsün
-	style.border_color = FLAME_COLOR
-	style.set_border_width_all(4)
-	style.set_corner_radius_all(4)
-	frame.add_theme_stylebox_override("panel", style)
+	var rect = _flame_rect(row, col)
+	var frame := TextureRect.new()
+	frame.texture = UiTheme.FLAME_FRAME   # ortası saydam, karo altında görünür
+	frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	frame.stretch_mode = TextureRect.STRETCH_SCALE
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.size = size
-	frame.pivot_offset = size / 2        # büyüme merkezden olsun
-	frame.position = _cell_center(row, col) - size / 2
+	frame.size = rect.size
+	frame.pivot_offset = rect.size / 2        # büyüme merkezden olsun
+	frame.position = rect.position
 	owner.add_child(frame)
 
 	var tween = frame.create_tween()
 	tween.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-	# Önce parlayıp hafifçe büyür, sonra sönerek kendi boyutuna döner
-	tween.tween_property(frame, "modulate", Color(1.8, 1.4, 1.0, 1.0), FLAME_DURATION * 0.25)
+	# Önce parlayıp hafifçe büyür, sonra sönerek kaybolur
+	tween.tween_property(frame, "modulate", Color(1.6, 1.3, 1.0, FLAME_ALPHA_HIGH), FLAME_DURATION * 0.25)
 	tween.parallel().tween_property(frame, "scale", Vector2(1.12, 1.12), FLAME_DURATION * 0.25)
 	tween.tween_property(frame, "modulate", Color(1.0, 1.0, 1.0, 0.0), FLAME_DURATION * 0.75)
 	tween.parallel().tween_property(frame, "scale", Vector2.ONE, FLAME_DURATION * 0.75)
@@ -598,54 +754,91 @@ func _flame_cell(row: int, col: int) -> void:
 # sönmeyen, nabız gibi atan bir alev çerçevesi. Hücre düğümünün üstünde
 # yaşayamaz (_render_board hepsini yok ediyor), bu yüzden kök düğüme eklenen
 # kalıcı bir Panel; konumu ve ömrü _update_flame_marks'ta güncelleniyor.
-var flame_marks: Dictionary = {}   # "satır,sütun" -> Panel
+# "satır,sütun" -> {"node": TextureRect, "owner": "satır,sütun" ya da ""}
+# owner boşsa klasik kural: hücreye karo konunca söner.
+# owner doluysa İkiz Kor işareti: o Salamander eşleşince söner (hücre dolu bile
+# olsa yanmaya devam eder, çünkü eş oraya SONRA konabilir).
+var flame_marks: Dictionary = {}
 
-func _mark_flame(row: int, col: int) -> void:
+# clear_on_fill: işaret, hücresine karo konunca söner (klasik kural). İkiz Kor
+# işaretlerinde false — o sütundaki dolu karolar da aday olduğu için "karo
+# kondu" kuralı onları daha doğarken söndürürdü.
+func _mark_flame(row: int, col: int, mark_owner: String = "", clear_on_fill: bool = true) -> void:
 	if row < 0 or row >= Board.ROWS or col < 0 or col >= Board.COLS:
 		return
-	if board.grid[row][col] != null:
-		return   # zaten dolu, beklenecek bir şey yok
+	if clear_on_fill and board.grid[row][col] != null:
+		return   # klasik kural: hücre zaten dolu, beklenecek bir şey yok
+	if mark_owner == "%d,%d" % [row, col]:
+		return   # Salamander'ın kendi hücresi işaretlenmez
 	var key = str(row) + "," + str(col)
 	if flame_marks.has(key):
 		return
-	var size = Vector2(board_cell_size, board_cell_size)
-	var frame := Panel.new()
-	var style := StyleBoxFlat.new()
-	style.draw_center = false
-	style.border_color = FLAME_COLOR
-	style.set_border_width_all(3)
-	style.set_corner_radius_all(4)
-	frame.add_theme_stylebox_override("panel", style)
+	var rect = _flame_rect(row, col)
+	var frame := TextureRect.new()
+	frame.texture = UiTheme.FLAME_FRAME
+	frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	frame.stretch_mode = TextureRect.STRETCH_SCALE
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.size = size
-	frame.pivot_offset = size / 2
-	frame.position = _cell_center(row, col) - size / 2
+	frame.size = rect.size
+	frame.pivot_offset = rect.size / 2
+	frame.position = rect.position
 	owner.add_child(frame)
-	flame_marks[key] = frame
+	flame_marks[key] = {"node": frame, "owner": mark_owner, "clear_on_fill": clear_on_fill}
 
 	# Sürekli nabız: sönmeden, dikkat çekmeyi de bırakmadan
 	var tween = frame.create_tween().set_loops()
 	tween.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
-	tween.tween_property(frame, "modulate", Color(1.6, 1.25, 1.0, 1.0), 0.7)
-	tween.tween_property(frame, "modulate", Color(1.0, 1.0, 1.0, 0.75), 0.7)
+	tween.tween_property(frame, "modulate", Color(1.3, 1.12, 1.0, FLAME_ALPHA_HIGH), 0.7)
+	tween.tween_property(frame, "modulate", Color(1.0, 1.0, 1.0, FLAME_ALPHA_LOW), 0.7)
 
 
-# Her çizimde çağrılır: dolan hücrelerin alevini söndürür, kalanları tahtanın
+# Her çizimde çağrılır: sönmesi gereken alevleri kaldırır, kalanları tahtanın
 # güncel yerleşimine göre yeniden konumlandırır.
 func _update_flame_marks() -> void:
 	for key in flame_marks.keys():
-		var frame = flame_marks[key]
+		var mark = flame_marks[key]
+		var frame = mark["node"]
 		if not is_instance_valid(frame):
 			flame_marks.erase(key)
 			continue
 		var parts = key.split(",")
 		var r = int(parts[0])
 		var c = int(parts[1])
-		if board.grid[r][c] != null:
+		# İki sönme koşulu birlikte: hücreye karo kondu (yalnızca klasik
+		# işaretlerde) ya da işareti doğuran Salamander eşini buldu.
+		var done = mark["clear_on_fill"] and board.grid[r][c] != null
+		if not done and not mark["owner"].is_empty():
+			done = scorer.paired_salamander_cells.has(mark["owner"])
+		if done:
 			frame.queue_free()
 			flame_marks.erase(key)
 		else:
-			frame.position = _cell_center(r, c) - frame.size / 2
+			var rect = _flame_rect(r, c)
+			frame.position = rect.position
+			frame.size = rect.size
+
+
+# Yerleştirilen karonun kaç kenarı, komşusuyla ZIT eşleşme yaptı. Zıt Kutuplar
+# kalıntısı yoksa ödül 0 olduğu için sonuç da 0 çıkar.
+const _OPPOSITE_DIRS := {"N": [-1, 0, "S"], "S": [1, 0, "N"], "E": [0, 1, "W"], "W": [0, -1, "E"]}
+
+func _opposite_match_gain(edges: Dictionary, row: int, col: int) -> int:
+	var bonus = RelicManager.opposites_bonus()
+	if bonus <= 0:
+		return 0
+	var matches = 0
+	for dir in _OPPOSITE_DIRS:
+		var step = _OPPOSITE_DIRS[dir]
+		var nr = row + step[0]
+		var nc = col + step[1]
+		if nr < 0 or nr >= Board.ROWS or nc < 0 or nc >= Board.COLS:
+			continue
+		var neighbor = board.grid[nr][nc]
+		if neighbor == null:
+			continue
+		if RelicManager.opposites_match(neighbor.get_edge(step[2]), edges[dir]):
+			matches += 1
+	return matches * bonus
 
 
 func _cell_center(row: int, col: int) -> Vector2:
@@ -741,20 +934,112 @@ func _on_key_collected(key_index: int) -> void:
 	if not relics_enabled or relic_panel == null:
 		_show_draft_for_pending()
 		return
-	var choices = RelicManager.offer_choices(3)
-	if choices.is_empty():
-		_show_draft_for_pending()   # havuz tükendi — seçim ekranı atlanır
+	last_key_index = key_index
+	# Körebe bu anahtardan SONRAKİLERİ ikiye çıkarır: hak sayısı burada, henüz
+	# bu turun seçimi yapılmadan okunuyor, yani Körebe'yi bu anahtarda seçmek
+	# aynı anahtara ikinci bir hak kazandırmaz.
+	pending_relic_picks = RelicManager.relics_per_key()
+	pending_relic_choices = []   # yeni anahtar, yeni üçlü
+	_offer_next_relic()
+
+
+# --- İleri Görüş --------------------------------------------------------
+
+# Kilitli çekiliş varsa onu TÜKETEREK döndürür, yoksa boş dizi. Kalıntı yoksa
+# birikmiş bir kilit kalmışsa da yok sayılır (kalıntı kaybedilemez ama güvenli).
+func _take_locked_draft() -> Array:
+	if not RelicManager.has_foresight() or foresight_locked_draft.is_empty():
+		foresight_locked_draft = []
+		return []
+	var draft = foresight_locked_draft
+	foresight_locked_draft = []
+	return draft
+
+
+# "Şimdi yenilersen bu gelir" çekilişini hazır tutar. Satır değiştiyse eldeki
+# önizleme yanlış oranlarla üretilmiş demektir, atılıp yenisi üretilir.
+func _refresh_foresight_preview(row: int) -> void:
+	if not RelicManager.has_foresight():
+		foresight_refresh_draft = []
+		foresight_refresh_row = -1
 		return
-	relic_panel.open(choices)
+	if foresight_refresh_row != row or foresight_refresh_draft.is_empty():
+		# Eldeki önizleme başka bir satır için üretilmişti ve kullanılmadan
+		# atılıyor: yaratıkları havuza geri koy, yoksa gösterilmemiş kartlar
+		# havuzu sessizce eritirdi.
+		for pair in foresight_refresh_draft:
+			generator.return_creature(pair["creature"])
+		foresight_refresh_draft = generator.generate_draft(row)
+		foresight_refresh_row = row
+	if foresight_panel != null:
+		foresight_panel.show_previews(foresight_refresh_draft, foresight_locked_draft)
+
+
+# Tur bitince (karo yerleşince) sonraki turun çekilişini üretip kilitler.
+# Satır oranları için ULAŞILAN EN YÜKSEK satır kullanılır: seçilecek hücre
+# henüz belli değil ve en yüksek satır geriye gitmediği için sömürülemez.
+func _lock_next_draft() -> void:
+	if not RelicManager.has_foresight():
+		foresight_locked_draft = []
+		return
+	foresight_locked_draft = generator.generate_draft(highest_row_reached)
+
+
+# Kumbarayı boşaltır (PiggyBadge tıklanınca). Ekonomiye yalnızca board_view
+# dokunduğu için ruhun eklenmesi ve günlüğe yazılması burada.
+func withdraw_piggy() -> void:
+	var amount = RelicManager.piggy_withdraw()
+	if amount <= 0:
+		return
+	economy.gain(amount)
+	money_log_panel.log_gain("Kara Gün Akçesi", amount)
+	print("Kara Gün Akçesi çekildi: %d ruh" % amount)
+
+
+# Kalan seçim hakkı varsa kalıntı ekranını açar, yoksa bu turun çekilişine geçer.
+func _offer_next_relic() -> void:
+	if pending_relic_picks <= 0:
+		_show_draft_for_pending()
+		return
+	# Üçlü yalnızca bir kez üretilir; Körebe'nin ikinci seçimi aynı listeden
+	# yapılır. Teklif filtreleri (parası yetmeyen Kara Gün, işe yaramayan
+	# Körebe) için veri katmanının bilmediği oyun durumunu bildiriyoruz.
+	if pending_relic_choices.is_empty():
+		RelicManager.set_offer_context(economy.money, board.key_positions.size(), last_key_index)
+		pending_relic_choices = RelicManager.offer_choices(3)
+	# Bu turda zaten alınanlar listeden düşer: ikinci seçim kalan kartlardan.
+	var remaining: Array = []
+	for def in pending_relic_choices:
+		if not RelicManager.has_relic(def.id):
+			remaining.append(def)
+	pending_relic_choices = remaining
+	if remaining.is_empty():
+		pending_relic_picks = 0
+		_show_draft_for_pending()   # seçilecek kart kalmadı
+		return
+	pending_relic_picks -= 1
+	relic_panel.open(remaining)
 
 
 # Kalıntı seçildikten sonra (RelicPanel.relic_chosen sinyali). Önce tahtayı
 # yeniden çizer (kalıntı tahtayı/kilidi etkileyebilir), sonra bu turun çekilişini
 # üretip gösterir — artık seçilen kalıntının etkileri de çekilişe yansır.
-func _on_relic_chosen(_relic_id: String) -> void:
+func _on_relic_chosen(relic_id: String) -> void:
 	_play_sfx_path(SOUND_RELIC_PATH, VOLUME_RELIC)
+
+	# Kara Gün Akçesi: alındığı anda 5 ruh yatırılır. Teklif filtresi parası
+	# yetmeyene bu kalıntıyı hiç göstermiyor, yani burada eksiye düşmek yok.
+	if relic_id == "kara_gun_akcesi":
+		var deposit = RelicManager.piggy_start()
+		economy.spend(deposit)
+		money_log_panel.log_spend("Kara Gün Akçesi", deposit)
+
+	# Körebe: toplanmamış anahtarlar rastgele yerlere taşınır ve görünmez olur.
+	if relic_id == "korebe":
+		board.scatter_keys()
+
 	_render_board()
-	_show_draft_for_pending()
+	_offer_next_relic()
 
 
 func _rotate_edges(edges: Dictionary, times: int) -> Dictionary:
@@ -841,6 +1126,15 @@ func _on_creature_target_pressed(row: int, col: int) -> void:
 	var placed_type = pending_creature
 	_play_sfx(CREATURE_SOUNDS[placed_type], CREATURE_VOLUMES[placed_type])
 	var payment = scorer.score_placement(board, row, col, placed_type)
+	_float_soul(row, col, payment)   # kazandırdığı ruh yaratıktan yükselsin
+	# Dagon geriye dönük çalışır: yeni Dagon, çevresindeki eski Dagon'ların da
+	# eş sayısını artırır ve onlar aradaki farkı şimdi öder (Abzu ile aynı tarif).
+	if placed_type == TileDef.Creature.DAGON:
+		var dagon_extra = scorer.update_dagon_neighbors(board, row, col)
+		if dagon_extra > 0:
+			economy.gain(dagon_extra)
+			money_log_panel.log_gain(CREATURE_NAMES[TileDef.Creature.DAGON], dagon_extra)
+		_flush_extra_payment_souls()
 	# Salamander simetriyle çalışır: eşini (ya da eşin gelmesi gereken hücreyi)
 	# kısa bir alevle işaretliyoruz. Efekt tahtanın DIŞINDA, kök düğüme eklenen
 	# geçici bir düğümde yaşıyor (anahtar uçuşuyla aynı tarif) — _render_board
@@ -849,8 +1143,13 @@ func _on_creature_target_pressed(row: int, col: int) -> void:
 		_flame_cell(scorer.last_salamander_flame[0], scorer.last_salamander_flame[1])
 		scorer.last_salamander_flame = []
 	if not scorer.last_salamander_mark.is_empty():
-		_mark_flame(scorer.last_salamander_mark[0], scorer.last_salamander_mark[1])
+		# İkiz Kor'da ayna sütununun tamamı işaretlenir ve dolu karolar da aday
+		# olduğu için "karo kondu" kuralı uygulanmaz.
+		var clear_on_fill = not RelicManager.salamander_any_row()
+		for mark in scorer.last_salamander_mark:
+			_mark_flame(mark[0], mark[1], scorer.last_salamander_mark_owner, clear_on_fill)
 		scorer.last_salamander_mark = []
+		scorer.last_salamander_mark_owner = ""
 	economy.gain(payment)
 	money_log_panel.log_gain(CREATURE_NAMES[placed_type], payment)
 	_flush_progression_unlocks()
@@ -940,20 +1239,31 @@ func _flush_progression_unlocks() -> void:
 func _check_stuck_after_creature() -> void:
 	# Yaratık ödemesi parayı kurtarmadıysa, oyuncuyu boş yere yeni bir hücre
 	# açmaya zorlamadan burada bitir — sonraki hiçbir çekiliş/yenileme karşılanamaz
-	if not economy.can_afford_anything(generator.generate_draft(_cheapest_open_row())):
+	# consume = false: bu çekiliş oyuncuya hiç gösterilmez, yalnızca "alabileceği
+	# bir şey kaldı mı" diye bakılır — yaratık havuzundan düşmemeli.
+	if not economy.can_afford_anything(generator.generate_draft(_cheapest_open_row(), false)):
 		_trigger_lose()
 
 
 # Kilitlenme kontrolü için satır: oyuncu henüz hücre seçmediğinden hangi satırın
-# oranlarıyla çekiliş üretileceği belli değil. Açık hücrelerin EN ÜSTTEKİ satırı
-# seçilir; üst satırlarda Eter az, Boşluk çok olduğu için tile'lar ortalama en
-# ucuz orada çıkar. Yani test oyuncunun lehine kurulur: "en ucuz ihtimalde bile
-# hiçbir şey alamıyorsa" oyun biter, tersi durumda oyun sürer.
+# oranlarıyla çekiliş üretileceği belli değil. Açık satırlar arasından TABAN
+# FİYATI EN DÜŞÜK olanı seçilir, böylece test oyuncunun lehine kurulur: "en ucuz
+# ihtimalde bile hiçbir şey alamıyorsa" oyun biter.
+#
+# Satır numarasına göre değil TABLOYA bakarak seçiyoruz: eskiden "en üstteki
+# satır en ucuzdur" varsayımıyla en küçük indeks alınıyordu, ama satır bazlı
+# taban fiyat (TileGenerator.ROW_BASE_PRICE) gelince üst satırlar en PAHALI
+# oldu ve test oyuncunun aleyhine döndü. Tabloya bakmak, fiyat eğrisi ileride
+# yine değişse de bu fonksiyonu doğru tutar.
 func _cheapest_open_row() -> int:
-	var row = Board.ROWS - 1
+	var best_row = Board.ROWS - 1
+	var best_price = TileGenerator.ROW_BASE_PRICE[best_row]
 	for cell in board.get_expandable_cells():
-		row = mini(row, cell[0])
-	return row
+		var price = TileGenerator.ROW_BASE_PRICE[cell[0]]
+		if price < best_price:
+			best_price = price
+			best_row = cell[0]
+	return best_row
 
 func _on_creature_skip() -> void:
 	print("%s yerleştirilmeden kayboldu" % CREATURE_NAMES[pending_creature])
@@ -975,6 +1285,8 @@ func _trigger_lose() -> void:
 	_play_sfx(SOUND_LOSE, VOLUME_LOSE)
 	is_drafting = false   # YENİ
 	draft_panel.hide_panel()
+	if foresight_panel != null:
+		foresight_panel.hide_panel()
 	placement_panel.hide_panel()
 	creature_panel.hide_panel()
 	end_game_panel.show_lose()
@@ -1021,6 +1333,9 @@ func _finalize_tile_placement(rotation: int) -> void:
 	# NOT: anahtar burada değil, hücre "+" ile seçildiğinde toplanır
 	# (bkz. _on_cell_pressed) — buraya geldiğimizde çoktan alınmış olur.
 	board.place_tile(rotated, placed_row, placed_col, pending_pair["price"])
+	RelicManager.piggy_tick()   # Kara Gün Akçesi: tur = bir karo yerleştirme
+	highest_row_reached = mini(highest_row_reached, placed_row)
+	_lock_next_draft()          # İleri Görüş: sonraki turun çekilişi şimdiden belli
 	_play_sfx(SOUND_PLACE, VOLUME_PLACE)
 
 	pending_surcharge = 0
@@ -1029,10 +1344,18 @@ func _finalize_tile_placement(rotation: int) -> void:
 	# Ayna Tahta: bu tile'ın dikey eksene göre simetrik hücreye bedava kopyası.
 	_apply_mirror_board(rotated, placed_row, placed_col)
 
+	# Zıt Kutuplar: bu yerleştirmede oluşan her zıt eşleşme (Ateş-Su,
+	# Hava-Toprak) ruh kazandırır. Kuralın kendisi RelicManager'da.
+	var opposite_gain = _opposite_match_gain(rotated, placed_row, placed_col)
+	if opposite_gain > 0:
+		economy.gain(opposite_gain)
+		money_log_panel.log_gain("Zıt Kutuplar", opposite_gain)
+
 	var abzu_extra = scorer.update_abzu_neighbors(board, placed_row, placed_col)
 	if abzu_extra > 0:
 		economy.gain(abzu_extra)
 		money_log_panel.log_gain(CREATURE_NAMES[TileDef.Creature.ABZU], abzu_extra)
+	_flush_extra_payment_souls()
 	# Abzu'nun kalıcı ilerleme eşikleri asıl burada açılır: komşu sayısı
 	# yerleştirmeden sonra, çevre doldukça artıyor.
 	_flush_progression_unlocks()

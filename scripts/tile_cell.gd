@@ -2,6 +2,9 @@ class_name TileCell
 extends Control
 
 signal clicked   # Tıklanabilir bir hücreyse, tıklanınca bunu yayınlar
+# Alınamayan bir çekiliş kartına tıklandı. Hücre neden alınamadığını bilmez
+# (sığmıyor mu, ruh mu yetmiyor) — onu bilen çekiliş panelidir, sinyali o yorumlar.
+signal rejected
 
 var edges: Dictionary = {}
 var is_filled: bool = false
@@ -14,6 +17,9 @@ var is_target: bool = false    # Çekiliş sürerken seçili olan boş hücre
 # ayrı tutuluyor: üzerine gelince vurgulanan ve el imleci gösteren tek hücre
 # türü bu, tahtanın kendi görsel dili değişmesin.
 var is_buyable: bool = false
+# Çekiliş kartı mı (set_static ile kuruldu)? Alınamayan kart tıklanabilir
+# DEĞİL ama tıkı yine de duyar — bkz. _gui_input / rejected.
+var is_card: bool = false
 var is_hovered: bool = false
 # Klavyeyle gezinirken üzerinde durulan hücre. Fareyle oynarken hiç kullanılmaz,
 # bu yüzden tahtanın diğer durumlarından ayrı bir bayrak.
@@ -301,10 +307,18 @@ func _draw_plus(size: Vector2) -> void:
 
 # Godot'un Control node'larında fare/tuş girdisi bu fonksiyondan geçer
 func _gui_input(event: InputEvent) -> void:
-	if not is_selectable:
+	if not _is_left_click(event):
 		return
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+	if is_selectable:
 		clicked.emit()
+	elif is_card:
+		# Alınamayan kart: tıklama sessizce kaybolmasın, sebebini panel sesle söyler.
+		rejected.emit()
+
+
+func _is_left_click(event: InputEvent) -> bool:
+	return event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
+
 
 func set_empty_selectable() -> void:
 	is_filled = false
@@ -350,6 +364,7 @@ func set_static(tile_edges: Dictionary, tile_creature: int, invalid: bool = fals
 	creature = tile_creature
 	is_selectable = buyable
 	is_buyable = buyable
+	is_card = true
 	is_preview = false
 	is_invalid = invalid
 	is_hovered = false

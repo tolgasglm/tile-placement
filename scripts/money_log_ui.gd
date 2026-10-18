@@ -14,7 +14,8 @@ var width_reference: Control   # DraftPanel değil, onun ebeveyni SidePanels —
 
 const GAIN_COLOR = Color("#8FE8FF")    # Işık — kazanç
 const SPEND_COLOR = Color("#FF5C7A")   # Çürüme — harcama
-const ENTRY_SOUL_SIZE := 40.0          # satır yüksekliğini şişirmeyecek kadar küçük
+const ENTRY_SOUL_SIZE := 40.0
+var suppressed: bool = false   # dışarıdan gizleme (bkz. foresight_ui.gd)          # satır yüksekliğini şişirmeyecek kadar küçük
 
 func _ready() -> void:
 	add_theme_stylebox_override("panel", UiTheme.frame_stylebox(UiTheme.PANEL_LOG, 28, 22))
@@ -24,6 +25,9 @@ func _ready() -> void:
 	# ve genişliği veren sütun henüz yerleşmemiştir: o kare sol üst köşede
 	# görünmesin diye ilk konumlandırmaya kadar gizli kalır.
 	visible = false
+	# İleri Görüş önizlemesi bu panelin yerine serildiğinde onu bastırır;
+	# yoksa aşağıdaki _process her karede kendini yeniden görünür yapıyor.
+	suppressed = false
 
 	var vbox = VBoxContainer.new()
 	add_child(vbox)
@@ -51,7 +55,7 @@ func _process(_delta: float) -> void:
 
 	var vp_size = get_viewport().get_visible_rect().size
 	position = Vector2(vp_size.x - size.x - 24, vp_size.y - size.y - 24)
-	visible = true
+	visible = not suppressed
 
 # Bir yaratık yerleştirmesinden gelen ödemeyi günlüğe ekler — 0 ödeme
 # (henüz eş bulamamış bir yaratık gibi) günlüğü kalabalıklaştırmasın diye atlanır

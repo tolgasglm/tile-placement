@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cpf0rmo1byys0"
-path="res://.godot/imported/panel_legend.png-b12fddae7031aba3d5a5a5df65807f24.ctex"
+uid="uid://stxwkdpx1jtu"
+path="res://.godot/imported/kara_gun_akcesi.png-97a057cc07b6642824d691daeaf8d064.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/panel_legend.png"
-dest_files=["res://.godot/imported/panel_legend.png-b12fddae7031aba3d5a5a5df65807f24.ctex"]
+source_file="res://assets/relics/kara_gun_akcesi.png"
+dest_files=["res://.godot/imported/kara_gun_akcesi.png-97a057cc07b6642824d691daeaf8d064.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

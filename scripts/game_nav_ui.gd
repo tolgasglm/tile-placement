@@ -1,9 +1,13 @@
 class_name GameNavButtons
 extends HBoxContainer
 
-# Oyun sırasında hep görünen iki ikon düğme: "Ana Menü" (geri oku) ve
-# "Yeniden Başla" (dönen ok).
+# Oyun sırasında hep görünen "Ana Menü" ikon düğmesi (geri oku).
 # Sağ sütunun üst şeridinde, ruh sayacının solunda durur.
+#
+# Yanında bir "Yeniden Başla" düğmesi vardı, kaldırıldı: koşuyu tek tuşla
+# silmek oyun içinde fazla kolaydı ve kısayolu (R) artık çekilişi yenilemeye
+# ait (bkz. board_view._unhandled_input). Yeniden başlatma yalnızca bitiş
+# ekranından yapılıyor; aşağıdaki static restart() onun için duruyor.
 #
 # Konumu her karede yazılır (money_ui.gd / money_log_ui.gd ile aynı yaklaşım).
 # Hizayı sağ sütundan (SidePanels) okur — DraftPanel gizliyken rect'i geçersiz
@@ -27,17 +31,16 @@ var column_anchor: Control
 # modal, öğreticinin de kendi çıkışı (Atla) var ve tamamlandı işaretini o koyar.
 var relic_panel: RelicPanel
 var tutorial: TutorialManager
-# main.gd'nin açtığı başlangıç menüsü. Esc'yi menü kendisi yakalar ama R'yi
-# yakalamaz — menü açıkken R oyunu başlatmasın.
+# main.gd'nin açtığı başlangıç menüsü. Esc'yi menü kendisi yakalar; menü
+# açıkken bu düğmenin kısayolu da çalışmamalı.
 var menu: MenuOverlay
 
 
 func _ready() -> void:
 	visible = false   # _process sütun yerleşince açar
 	add_theme_constant_override("separation", 4)
-	# Tooltip'te kısayol da yazar — aşağıdaki _unhandled_input ile aynı tuşlar.
+	# Tooltip'te kısayol da yazar — aşağıdaki _unhandled_input ile aynı tuş.
 	add_child(_make_icon_button(UiTheme.BACK_ICON, "Ana Menü  (Esc)", go_to_menu))
-	add_child(_make_icon_button(UiTheme.RESTART_ICON, "Yeniden Başla  (R)", restart))
 
 
 # Çerçevesiz, yalnızca ikondan ibaret düğme (placement_ui.gd'deki döndürme
@@ -61,16 +64,13 @@ func _make_icon_button(icon: Texture2D, tooltip: String, action: Callable) -> Bu
 	return btn
 
 
-# Esc: Ana Menü, R: Yeniden Başla.
+# Esc: Ana Menü. (R artık burada değil: çekilişi yeniler, bkz. board_view.)
 func _unhandled_input(event: InputEvent) -> void:
 	if _shortcuts_blocked():
 		return
 	if event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
 		go_to_menu()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R:
-		get_viewport().set_input_as_handled()
-		restart()
 
 
 func _shortcuts_blocked() -> bool:
